@@ -7,6 +7,11 @@
   "bin": {
     "ai-usage": "./bin/ai-usage.js"
   },
+  "files": [
+    "bin",
+    "src",
+    "README.md"
+  ],
   "scripts": {
     "start": "node bin/ai-usage.js",
     "test": "node --test test/*.test.js"
@@ -25,10 +30,19 @@
     "copilot",
     "antigravity",
     "gemini",
-    "tui"
+    "tui",
+    "cli"
   ],
   "author": "ade",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/adetxt/ai-usage-analyzer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/adetxt/ai-usage-analyzer/issues"
+  },
+  "homepage": "https://github.com/adetxt/ai-usage-analyzer#readme",
   "dependencies": {
     "boxen": "^7.1.1",
     "chalk": "^5.3.0",

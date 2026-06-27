@@ -15,7 +15,22 @@ TUI analyzer for local AI coding agent token consumption. Auto-detects
 
 ## Install
 
-Requires **Node.js ≥ 22.5** (for built-in `node:sqlite`) and **pnpm ≥ 10**.
+Requires **Node.js ≥ 22.5** (for built-in `node:sqlite`).
+
+Pick whichever fits your workflow:
+
+### Option 1: `npx` from GitHub (zero install, fastest to try)
+
+```bash
+npx -y github:adetxt/ai-usage-analyzer
+# or with a specific ref
+npx -y github:adetxt/ai-usage-analyzer#v0.1.0
+```
+
+No clone, no `node_modules`, no global install. npx downloads the repo
+on first run and caches it. Subsequent runs are instant.
+
+### Option 2: Clone + install (best for development / contribution)
 
 ```bash
 git clone https://github.com/adetxt/ai-usage-analyzer.git
@@ -24,8 +39,39 @@ pnpm install
 pnpm link --global   # exposes the `ai-usage` command globally
 ```
 
-> Uses `pnpm` (declared in `packageManager` field). The `pnpm-lock.yaml`
+> Uses `pnpm` (declared in the `packageManager` field). `pnpm-lock.yaml`
 > is committed as the source of truth for reproducible installs.
+
+### Option 3: Install globally from GitHub (no clone)
+
+```bash
+pnpm add -g git+https://github.com/adetxt/ai-usage-analyzer.git
+# or with npm
+npm install -g git+https://github.com/adetxt/ai-usage-analyzer.git
+# then
+ai-usage
+```
+
+### Option 4: From npm registry (when published)
+
+```bash
+npx -y ai-usage-analyzer
+# or
+pnpm add -g ai-usage-analyzer
+```
+
+To publish your own copy: `npm login && npm publish --access public`
+(requires the `ai-usage-analyzer` name to be available on npmjs.com,
+or use a scoped name like `@yourname/ai-usage-analyzer` and update
+the `name` field in `package.json` first).
+
+### Verify install
+
+```bash
+ai-usage --help
+# or via npx
+npx -y github:adetxt/ai-usage-analyzer --help
+```
 
 ## Usage
 
