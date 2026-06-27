@@ -10,14 +10,18 @@ import {
   renderPerProject, renderPerMonth, renderPerWeek,
   renderTopSessions, renderNotes,
 } from '../src/render.js';
+import { renderMarkdown } from '../src/markdown.js';
 
 const args = process.argv.slice(2);
-const flags = new Set(args.filter(a => a.startsWith('--')));
-const showHelp = flags.has('--help') || flags.has('-h');
-const jsonOut = flags.has('--json');
+const hasFlag = (name) => args.includes(`--${name}`) || args.includes(`-${name}`);
+const showHelp = hasFlag('help') || hasFlag('h');
+const jsonOut = hasFlag('json');
+const mdOut = hasFlag('markdown') || hasFlag('md');
 const topN = (() => {
   const i = args.indexOf('--top');
-  return i >= 0 ? parseInt(args[i + 1], 10) || 5 : 5;
+  if (i < 0) return 5;
+  const v = parseInt(args[i + 1], 10);
+  return Number.isFinite(v) && v > 0 ? v : 5;
 })();
 
 if (showHelp) {
@@ -28,9 +32,16 @@ Usage:
   ai-usage [options]
 
 Options:
-  --top N            Show top N heaviest sessions (default: 5)
-  --json             Output machine-readable JSON instead of TUI
   -h, --help         Show this help
+  --json             Output machine-readable JSON instead of TUI
+  --markdown, --md   Output as a Markdown report (GitHub-flavored tables)
+  --top N            Show top N heaviest sessions (default: 5)
+
+Examples:
+  ai-usage                       # default TUI
+  ai-usage --json | jq .summary  # pipe to jq
+  ai-usage --md > report.md      # save as markdown
+  ai-usage --top 20              # show top 20 sessions
 
 Environment overrides (per-tool data path):
   CLAUDE_HOME, CODEX_HOME, OPENCODE_HOME, MIMOCODE_HOME,
@@ -47,6 +58,11 @@ Supported tools:
   • Gemini CLI     — ~/.gemini/antigravity/conversations  (presence only)
 `);
   process.exit(0);
+}
+
+if (jsonOut && mdOut) {
+  console.error('Error: --json and --markdown are mutually exclusive.');
+  process.exit(2);
 }
 
 async function main() {
@@ -67,6 +83,15 @@ async function main() {
       durationMs: Date.now() - t0,
     };
     console.log(JSON.stringify(out, null, 2));
+    return;
+  }
+
+  if (mdOut) {
+    const out = renderMarkdown({
+      records, detections, errors,
+      dateRange: range, topN, generatedAt: new Date().toISOString(),
+    });
+    process.stdout.write(out);
     return;
   }
 

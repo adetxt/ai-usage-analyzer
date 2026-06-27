@@ -76,10 +76,12 @@ npx -y github:adetxt/ai-usage-analyzer --help
 ## Usage
 
 ```bash
-ai-usage                # default TUI
-ai-usage --top 10       # show top 10 heaviest sessions
-ai-usage --json         # machine-readable JSON output
-ai-usage --help
+ai-usage                  # default TUI
+ai-usage --top 10         # show top 10 heaviest sessions
+ai-usage --json           # machine-readable JSON output
+ai-usage --markdown       # GitHub-flavored Markdown report
+ai-usage --md > report.md # same, save to file
+ai-usage -h               # help (also --help)
 ```
 
 ### Environment overrides
@@ -177,6 +179,38 @@ ai-usage --json | jq '.summary'
 #   "cost": 29.4,
 #   "avg": 3790000
 # }
+```
+
+### Markdown (`--markdown` / `--md`)
+
+GitHub-flavored markdown report with the same sections as the TUI (header,
+detected tools, overview, token breakdown, per-project, per-month, per-week,
+top sessions, notes). Designed to be pasted into GitHub issues, PRs, or
+Notion pages.
+
+```bash
+ai-usage --md > report.md
+cat report.md   # or just paste the output into a GitHub comment
+```
+
+Distribution bars use Unicode block characters (`█░`) so they render in
+plain markdown without colors. Sample output:
+
+```markdown
+# AI Token Usage Report
+
+**Range**: 2026-04-01 → 2026-06-27  
+**Sessions**: 411  
+**Total tokens**: 1.58B  
+**Cost**: $29.40 (opencode only)  
+
+## Detected AI Tools
+
+| Tool | Status | Path | Count | Tokens |
+|---|---|---|---:|---|
+| Codex | ✅ present | `~/.codex/sessions` | 94 | ✅ |
+| OpenCode | ✅ present | `~/.local/share/opencode/opencode.db` | 328 | ✅ |
+| ...
 ```
 
 ## License
