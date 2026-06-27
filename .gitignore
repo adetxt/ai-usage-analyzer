@@ -6,3 +6,8 @@ node_modules/
 coverage/
 dist/
 .cache/
+
+# pnpm: commit pnpm-lock.yaml (source of truth, like package-lock.json)
+# Optional: ignore local pnpm content-addressable store
+.pnpm-store/
+.pnpm-debug.log*

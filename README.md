@@ -15,14 +15,17 @@ TUI analyzer for local AI coding agent token consumption. Auto-detects
 
 ## Install
 
-Requires **Node.js ≥ 22.5** (for built-in `node:sqlite`).
+Requires **Node.js ≥ 22.5** (for built-in `node:sqlite`) and **pnpm ≥ 10**.
 
 ```bash
 git clone https://github.com/adetxt/ai-usage-analyzer.git
 cd ai-usage-analyzer
-npm install
-npm link           # exposes the `ai-usage` command globally
+pnpm install
+pnpm link --global   # exposes the `ai-usage` command globally
 ```
+
+> Uses `pnpm` (declared in `packageManager` field). The `pnpm-lock.yaml`
+> is committed as the source of truth for reproducible installs.
 
 ## Usage
 
