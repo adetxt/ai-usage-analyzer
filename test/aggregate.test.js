@@ -3,6 +3,9 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { detectAll } from '../src/detectors.js';
 import { loadAll, dateRange } from '../src/loaders.js';
 import {
@@ -107,5 +110,51 @@ test('records have the unified shape', async () => {
     assert.ok(/^\d{4}-\d{2}$/.test(r.month), `bad month: ${r.month}`);
     assert.equal(typeof r.tokensTotal, 'number');
     assert.ok(r.tokensTotal > 0);
+  }
+});
+
+test('claude detector counts nested .jsonl files under projects/<dir>/', () => {
+  // Simulate real Claude Code layout: ~/.claude/projects/<encoded-cwd>/<UUID>.jsonl
+  const root = mkdtempSync(join(tmpdir(), 'claude-detector-'));
+  const prev = process.env.CLAUDE_HOME;
+  process.env.CLAUDE_HOME = root;
+  try {
+    const proj1 = join(root, 'projects', '-Users-foo--my-app');
+    const proj2 = join(root, 'projects', '-Users-foo--other');
+    mkdirSync(proj1, { recursive: true });
+    mkdirSync(proj2, { recursive: true });
+    writeFileSync(join(proj1, 'aaaaaaaa-1111-1111-1111-aaaaaaaaaaaa.jsonl'), '{"type":"user"}\n');
+    writeFileSync(join(proj1, 'bbbbbbbb-2222-2222-2222-bbbbbbbbbbbb.jsonl'), '{"type":"user"}\n');
+    writeFileSync(join(proj2, 'cccccccc-3333-3333-3333-cccccccccccc.jsonl'), '{"type":"user"}\n');
+    // junk file that should be ignored
+    writeFileSync(join(proj1, 'README.md'), 'not a session');
+
+    const dets = detectAll();
+    const claude = dets.find(d => d.key === 'claude');
+    assert.ok(claude, 'claude detector missing');
+    assert.equal(claude.status, 'present', `expected present, got ${claude.status}`);
+    assert.equal(claude.count, 3, `expected 3 sessions, got ${claude.count}`);
+    assert.equal(claude.path, join(root, 'projects'));
+  } finally {
+    if (prev === undefined) delete process.env.CLAUDE_HOME;
+    else process.env.CLAUDE_HOME = prev;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('claude detector is absent when CLAUDE_HOME has no projects dir', () => {
+  const root = mkdtempSync(join(tmpdir(), 'claude-detector-'));
+  const prev = process.env.CLAUDE_HOME;
+  process.env.CLAUDE_HOME = root;
+  try {
+    // root exists but has no `projects` subdir
+    mkdirSync(join(root, 'settings'), { recursive: true });
+    const dets = detectAll();
+    const claude = dets.find(d => d.key === 'claude');
+    assert.equal(claude.status, 'absent');
+  } finally {
+    if (prev === undefined) delete process.env.CLAUDE_HOME;
+    else process.env.CLAUDE_HOME = prev;
+    rmSync(root, { recursive: true, force: true });
   }
 });

@@ -1,6 +1,6 @@
 {
   "name": "ai-usage-analyzer",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "TUI analyzer for local AI coding agent token usage. Auto-detects Claude Code, Codex, OpenCode, MimoCode, Copilot, Antigravity, and Gemini.",
   "type": "module",
   "packageManager": "pnpm@10.33.0",

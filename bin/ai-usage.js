@@ -49,7 +49,7 @@ Environment overrides (per-tool data path):
   AI_USAGE_PATHS_JSON='{"codex":"/custom/path",...}'
 
 Supported tools:
-  • Claude Code    — ~/.claude/transcripts  (presence only)
+  • Claude Code    — ~/.claude/projects  (presence only)
   • Codex          — ~/.codex/sessions      (tokens from token_count events)
   • OpenCode       — ~/.local/share/opencode/opencode.db  (tokens + cost)
   • MimoCode       — ~/.local/share/mimocode/mimocode.db  (tokens + cost)

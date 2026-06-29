@@ -56,25 +56,28 @@ const DETECTORS = [
     name: 'Claude Code',
     kind: 'jsonl',
     envVar: 'CLAUDE_HOME',
-    candidatePaths: () => {
-      const base = env.CLAUDE_HOME || join(HOME, '.claude');
-      return [
-        join(base, 'transcripts'),
-        join(base, 'projects'),
-      ];
-    },
+    candidatePaths: () => [
+      env.CLAUDE_HOME
+        ? join(env.CLAUDE_HOME, 'projects')
+        : join(HOME, '.claude', 'projects'),
+    ],
     count: (p) => {
       if (!p) return 0;
       let n = 0;
-      try {
-        for (const f of readdirSync(p)) {
-          if (f.startsWith('ses_') && f.endsWith('.jsonl')) n++;
-        }
-      } catch {}
+      function walk(dir) {
+        try {
+          for (const e of readdirSync(dir, { withFileTypes: true })) {
+            const full = join(dir, e.name);
+            if (e.isDirectory()) walk(full);
+            else if (e.isFile() && e.name.endsWith('.jsonl')) n++;
+          }
+        } catch {}
+      }
+      walk(p);
       return n;
     },
     hasTokens: false,  // transcripts only contain text, no token counts
-    description: '~/.claude/transcripts/*.jsonl  (no token data stored locally)',
+    description: '~/.claude/projects/*/<UUID>.jsonl  (no token data stored locally)',
   },
 
   // -----------------------------------------------------------------------

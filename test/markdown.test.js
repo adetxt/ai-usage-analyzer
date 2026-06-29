@@ -7,8 +7,8 @@ import { renderMarkdown } from '../src/markdown.js';
 
 const DETECTIONS_FULL = [
   { key: 'claude', name: 'Claude Code', kind: 'jsonl', status: 'present',
-    path: '/home/u/.claude/transcripts', count: 2, hasTokens: false,
-    description: '~/.claude/transcripts/*.jsonl  (no token data stored locally)' },
+    path: '/home/u/.claude/projects', count: 2, hasTokens: false,
+    description: '~/.claude/projects/*/<UUID>.jsonl  (no token data stored locally)' },
   { key: 'codex', name: 'Codex', kind: 'jsonl-rollout', status: 'present',
     path: '/home/u/.codex/sessions', count: 94, hasTokens: true,
     description: '~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl' },
