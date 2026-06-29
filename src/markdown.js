@@ -3,9 +3,10 @@
 // copies cleanly into issues, PRs, Notion, etc.
 
 import {
-  perProject, perMonth, perWeek, perTool, overall, topSessions, tokenBreakdown,
+  perProject, perMonth, perWeek, perTool, perToolPerMonth, overall, topSessions, tokenBreakdown,
   MONTH_NAMES,
 } from './aggregate.js';
+import { getToolBarChar, TOOLS } from './tools.js';
 
 // ---------------------------------------------------------------------------
 // Number formatting helpers (re-implemented locally to avoid TUI deps)
@@ -39,6 +40,29 @@ function bar(value, max, width) {
   const pct = Math.max(0, Math.min(1, value / max));
   const filled = Math.round(pct * width);
   return '█'.repeat(filled) + '░'.repeat(width - filled);
+}
+
+// Markdown has no color, so each tool's stacked-bar segment is shown with
+// a distinct block character. The character for each tool is defined in
+// src/tools.js alongside its color.
+function stackedBar(byTool, width) {
+  const total = Object.values(byTool).reduce((a, b) => a + b, 0);
+  if (total <= 0 || width <= 0) return ' '.repeat(Math.max(0, width));
+  const entries = Object.entries(byTool)
+    .filter(([, v]) => v > 0)
+    .sort((a, b) => b[1] - a[1]);
+  let out = '';
+  let x = 0;
+  for (let i = 0; i < entries.length; i++) {
+    const [tool, value] = entries[i];
+    const segW = i === entries.length - 1
+      ? width - x
+      : Math.round((value / total) * width);
+    if (segW <= 0) continue;
+    out += getToolBarChar(tool).repeat(segW);
+    x += segW;
+  }
+  return out;
 }
 
 function pct(x) { return (x * 100).toFixed(1) + '%'; }
@@ -151,15 +175,53 @@ export function renderMarkdown({
   // Per Project ---------------------------------------------------------
   const projects = perProject(records);
   if (projects.length > 0) {
-    const max = projects[0].tokensTotal;
     out.push(`## Per Project`);
     out.push(``);
-    out.push(`| Tool | Project | Sessions | Input | Output | Cache | Total | Dist |`);
-    out.push(`|---|---|---:|---:|---:|---:|---:|---|`);
+    out.push(`| Project | Sessions | Input | Output | Cache | Total | Dist |`);
+    out.push(`|---|---:|---:|---:|---:|---:|---|`);
     for (const p of projects) {
       const cache = p.tokensCacheRead + p.tokensCacheWrite;
       const proj = compactHome(p.project);
-      out.push(`| ${mdEscape(p.tool)} | \`${mdEscape(proj)}\` | ${fmtInt(p.n)} | ${fmtCompact(p.tokensInput)} | ${fmtCompact(p.tokensOutput)} | ${fmtCompact(cache)} | ${fmtCompact(p.tokensTotal)} | ${bar(p.tokensTotal, max, 20)} |`);
+      out.push(`| \`${mdEscape(proj)}\` | ${fmtInt(p.n)} | ${fmtCompact(p.tokensInput)} | ${fmtCompact(p.tokensOutput)} | ${fmtCompact(cache)} | ${fmtCompact(p.tokensTotal)} | ${stackedBar(p.byTool, 20)} |`);
+    }
+    out.push(``);
+    const legend = TOOLS
+      .filter(t => t.hasTokens)
+      .map(t => `\`${t.barChar}\` ${t.label}`)
+      .join(' · ');
+    out.push(`_Bar legend: ${legend} · \`·\` other_`);
+    out.push(``);
+  }
+
+  // Per Tool ------------------------------------------------------------
+  const toolRows = perTool(records);
+  if (toolRows.length > 0) {
+    const max = toolRows[0].tokensTotal;
+    out.push(`## Per Tool`);
+    out.push(``);
+    out.push(`| Tool | Sessions | Input | Output | Cache | Total | Cost | Avg/sess | Dist |`);
+    out.push(`|---|---:|---:|---:|---:|---:|---:|---:|---|`);
+    for (const p of toolRows) {
+      const cache = p.tokensCacheRead + p.tokensCacheWrite;
+      out.push(`| ${mdEscape(p.tool)} | ${fmtInt(p.n)} | ${fmtCompact(p.tokensInput)} | ${fmtCompact(p.tokensOutput)} | ${fmtCompact(cache)} | ${fmtCompact(p.tokensTotal)} | ${fmtCost(p.cost)} | ${fmtCompact(p.avg)} | ${bar(p.tokensTotal, max, 20)} |`);
+    }
+    out.push(``);
+  }
+
+  // Per Tool per Month ---------------------------------------------------
+  const tpmRows = perToolPerMonth(records);
+  if (tpmRows.length > 0) {
+    const max = tpmRows[0].tokensTotal;
+    out.push(`## Per Tool per Month`);
+    out.push(``);
+    out.push(`| Tool | Month | Sessions | Input | Output | Cache | Total | Dist |`);
+    out.push(`|---|---|---:|---:|---:|---:|---:|---|`);
+    for (const p of tpmRows) {
+      const cache = p.tokensCacheRead + p.tokensCacheWrite;
+      const yyyy = p.month.slice(0, 4);
+      const mm = p.month.slice(5, 7);
+      const label = `${MONTH_NAMES[mm] || mm} ${yyyy}`;
+      out.push(`| ${mdEscape(p.tool)} | ${label} | ${fmtInt(p.n)} | ${fmtCompact(p.tokensInput)} | ${fmtCompact(p.tokensOutput)} | ${fmtCompact(cache)} | ${fmtCompact(p.tokensTotal)} | ${bar(p.tokensTotal, max, 18)} |`);
     }
     out.push(``);
   }
@@ -167,16 +229,15 @@ export function renderMarkdown({
   // Per Month -----------------------------------------------------------
   const months = perMonth(records);
   if (months.length > 0) {
-    const max = Math.max(...months.map(m => m.tokensTotal));
     out.push(`## Per Month`);
     out.push(``);
-    out.push(`| Month | Sessions | Input | Output | Total | OC | CX | MM | Dist |`);
-    out.push(`|---|---:|---:|---:|---:|---:|---:|---:|---|`);
+    out.push(`| Month | Sessions | Input | Output | Total | Dist |`);
+    out.push(`|---|---:|---:|---:|---:|---|`);
     for (const m of months) {
       const yyyy = m.month.slice(0, 4);
       const mm = m.month.slice(5, 7);
       const label = `${MONTH_NAMES[mm] || mm} ${yyyy}`;
-      out.push(`| ${label} | ${fmtInt(m.n)} | ${fmtCompact(m.tokensInput)} | ${fmtCompact(m.tokensOutput)} | ${fmtCompact(m.tokensTotal)} | ${m.byTool.opencode ? fmtCompact(m.byTool.opencode) : '—'} | ${m.byTool.codex ? fmtCompact(m.byTool.codex) : '—'} | ${m.byTool.mimocode ? fmtCompact(m.byTool.mimocode) : '—'} | ${bar(m.tokensTotal, max, 20)} |`);
+      out.push(`| ${label} | ${fmtInt(m.n)} | ${fmtCompact(m.tokensInput)} | ${fmtCompact(m.tokensOutput)} | ${fmtCompact(m.tokensTotal)} | ${stackedBar(m.byTool, 20)} |`);
     }
     out.push(``);
   }
@@ -184,13 +245,12 @@ export function renderMarkdown({
   // Per Week ------------------------------------------------------------
   const weeks = perWeek(records);
   if (weeks.length > 0) {
-    const max = Math.max(...weeks.map(w => w.tokensTotal));
     out.push(`## Per Week`);
     out.push(``);
-    out.push(`| Week | Sessions | Input | Output | Total | OC | CX | MM | Dist |`);
-    out.push(`|---|---:|---:|---:|---:|---:|---:|---:|---|`);
+    out.push(`| Week | Sessions | Input | Output | Total | Dist |`);
+    out.push(`|---|---:|---:|---:|---:|---|`);
     for (const w of weeks) {
-      out.push(`| ${w.week} | ${fmtInt(w.n)} | ${fmtCompact(w.tokensInput)} | ${fmtCompact(w.tokensOutput)} | ${fmtCompact(w.tokensTotal)} | ${w.byTool.opencode ? fmtCompact(w.byTool.opencode) : '—'} | ${w.byTool.codex ? fmtCompact(w.byTool.codex) : '—'} | ${w.byTool.mimocode ? fmtCompact(w.byTool.mimocode) : '—'} | ${bar(w.tokensTotal, max, 18)} |`);
+      out.push(`| ${w.week} | ${fmtInt(w.n)} | ${fmtCompact(w.tokensInput)} | ${fmtCompact(w.tokensOutput)} | ${fmtCompact(w.tokensTotal)} | ${stackedBar(w.byTool, 18)} |`);
     }
     out.push(``);
   }

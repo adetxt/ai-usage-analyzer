@@ -2,8 +2,8 @@
 
 const MONTH_NAMES = {
   '01': 'Jan', '02': 'Feb', '03': 'Mar', '04': 'Apr',
-  '05': 'Mei', '06': 'Jun', '07': 'Jul', '08': 'Agu',
-  '09': 'Sep', '10': 'Okt', '11': 'Nov', '12': 'Des',
+  '05': 'May', '06': 'Jun', '07': 'Jul', '08': 'Aug',
+  '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dec',
 };
 
 function sum(arr, key) {
@@ -38,13 +38,23 @@ function summarize(records) {
   };
 }
 
+function toolBreakdown(records) {
+  const byTool = {};
+  for (const r of records) {
+    byTool[r.tool] = (byTool[r.tool] || 0) + r.tokensTotal;
+  }
+  return byTool;
+}
+
 export function perProject(records) {
-  const m = groupBy(records, r => `${r.tool}\u0001${r.project}`);
+  // One row per project — tool mix is shown via the stacked bar / byTool,
+  // not as a separate column. Detailed per-tool-per-project breakdown
+  // is no longer surfaced here; the "Per Tool per Month" section is the
+  // place to see per-tool data over time.
+  const m = groupBy(records, r => r.project);
   const out = [];
-  for (const [k, arr] of m) {
-    const [tool, project] = k.split('\u0001');
-    const s = summarize(arr);
-    out.push({ tool, project, ...s });
+  for (const [project, arr] of m) {
+    out.push({ project, ...summarize(arr), byTool: toolBreakdown(arr) });
   }
   return out.sort((a, b) => b.tokensTotal - a.tokensTotal);
 }
@@ -53,11 +63,7 @@ export function perMonth(records) {
   const m = groupBy(records, r => r.month);
   const out = [];
   for (const [month, arr] of m) {
-    const byTool = {};
-    for (const r of arr) {
-      byTool[r.tool] = (byTool[r.tool] || 0) + r.tokensTotal;
-    }
-    out.push({ month, ...summarize(arr), byTool });
+    out.push({ month, ...summarize(arr), byTool: toolBreakdown(arr) });
   }
   return out.sort((a, b) => a.month.localeCompare(b.month));
 }
@@ -66,11 +72,7 @@ export function perWeek(records) {
   const m = groupBy(records, r => r.week);
   const out = [];
   for (const [week, arr] of m) {
-    const byTool = {};
-    for (const r of arr) {
-      byTool[r.tool] = (byTool[r.tool] || 0) + r.tokensTotal;
-    }
-    out.push({ week, ...summarize(arr), byTool });
+    out.push({ week, ...summarize(arr), byTool: toolBreakdown(arr) });
   }
   return out.sort((a, b) => a.week.localeCompare(b.week));
 }
@@ -80,6 +82,19 @@ export function perTool(records) {
   const out = [];
   for (const [tool, arr] of m) {
     out.push({ tool, ...summarize(arr) });
+  }
+  return out.sort((a, b) => b.tokensTotal - a.tokensTotal);
+}
+
+export function perToolPerMonth(records) {
+  // Cross-tab: one row per (tool, month). Lets you see how a single tool's
+  // usage is distributed across months — and avoids the hardcoded OC/CX/MM
+  // column problem in the per-month table.
+  const m = groupBy(records, r => `${r.tool}\u0001${r.month}`);
+  const out = [];
+  for (const [k, arr] of m) {
+    const [tool, month] = k.split('\u0001');
+    out.push({ tool, month, ...summarize(arr) });
   }
   return out.sort((a, b) => b.tokensTotal - a.tokensTotal);
 }

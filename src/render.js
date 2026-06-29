@@ -6,9 +6,10 @@ import boxen from 'boxen';
 import gradient from 'gradient-string';
 import process from 'node:process';
 import {
-  perProject, perMonth, perWeek, perTool, overall, topSessions, tokenBreakdown,
+  perProject, perMonth, perWeek, perTool, perToolPerMonth, overall, topSessions, tokenBreakdown,
   MONTH_NAMES,
 } from './aggregate.js';
+import { getToolColor } from './tools.js';
 
 // ---------------------------------------------------------------------------
 // Terminal width detection
@@ -63,34 +64,45 @@ export function fmtCost(n) {
 // Color helpers
 // ---------------------------------------------------------------------------
 
-const TOOL_COLORS = {
-  opencode: 'cyan',
-  codex: 'magenta',
-  mimocode: 'yellow',
-  claude: 'blue',
-  copilot: 'green',
-  antigravity: 'red',
-  gemini: 'gray',
-};
+export function toolColor(t) { return getToolColor(t); }
+export function colorize(t, c) { return chalk.hex(c)(t); }
 
-export function toolColor(t) { return TOOL_COLORS[t] || 'white'; }
-export function colorize(t, c) { return chalk.hex(toHex(c))(t); }
+// Cool-to-warm gradient: small bars feel subtle, large bars pop.
+const BAR_GRADIENT = gradient(['#3b82f6', '#14b8a6', '#f1fa8c', '#ff9e64']);
 
-function toHex(name) {
-  const m = {
-    red: '#ff5555', green: '#50fa7b', yellow: '#f1fa8c',
-    blue: '#8be9fd', magenta: '#ff79c6', cyan: '#8be9fd',
-    white: '#f8f8f2', gray: '#6272a4',
-  };
-  return m[name] || '#ffffff';
-}
-
-function bar(value, max, width, color) {
+function bar(value, max, width) {
   if (max <= 0) return ' '.repeat(width);
   const pct = Math.max(0, Math.min(1, value / max));
   const filled = Math.round(pct * width);
   const empty = width - filled;
-  return chalk.hex(toHex(color))('█'.repeat(filled)) + chalk.gray('░'.repeat(empty));
+  if (filled === 0) return chalk.gray('░'.repeat(width));
+  return BAR_GRADIENT('█'.repeat(filled)) + chalk.gray('░'.repeat(empty));
+}
+
+// Stacked bar — one segment per tool, widths proportional to that tool's
+// share of the row's total. Used wherever a row spans multiple tools
+// (per-project / per-month / per-week). Single-tool rows are just one
+// colored segment; no change in feel.
+function stackedBar(byTool, width) {
+  const total = Object.values(byTool).reduce((a, b) => a + b, 0);
+  if (total <= 0 || width <= 0) return ' '.repeat(Math.max(0, width));
+  const entries = Object.entries(byTool)
+    .filter(([, v]) => v > 0)
+    .sort((a, b) => b[1] - a[1]);
+  let out = '';
+  let x = 0;
+  for (let i = 0; i < entries.length; i++) {
+    const [tool, value] = entries[i];
+    // Last segment fills the remaining width so rounding doesn't leave
+    // a visible gap or overshoot.
+    const segW = i === entries.length - 1
+      ? width - x
+      : Math.round((value / total) * width);
+    if (segW <= 0) continue;
+    out += chalk.hex(toolColor(tool))('█'.repeat(segW));
+    x += segW;
+  }
+  return out;
 }
 
 function shortModel(m) {
@@ -250,23 +262,60 @@ function pct(x) { return (x * 100).toFixed(1) + '%'; }
 export function renderPerProject(records) {
   const items = perProject(records);
   if (items.length === 0) return '';
-  const max = items[0].tokensTotal;
   const barW = NARROW ? 10 : 18;
 
   // Narrow mode: drop In/Out/Cache columns, just show n + Total + Dist
   const head = NARROW
-    ? [chalk.bold('Tool'), chalk.bold('Project'), chalk.bold('n'),
+    ? [chalk.bold('Project'), chalk.bold('n'),
        chalk.bold('Total'), chalk.bold('Dist')]
-    : [chalk.bold('Tool'), chalk.bold('Project'), chalk.bold('n'),
+    : [chalk.bold('Project'), chalk.bold('n'),
        chalk.bold('In'), chalk.bold('Out'),
        chalk.bold('Cache'), chalk.bold('Total'), chalk.bold('Dist')];
   const t = new Table({ head, style: { head: [], border: [] } });
 
   for (const p of items) {
     const cache = p.tokensCacheRead + p.tokensCacheWrite;
+    const row = [truncEnd(p.project, NARROW ? 28 : 40), fmtInt(p.n)];
+    if (!NARROW) {
+      row.push(
+        fmtCompact(p.tokensInput),
+        fmtCompact(p.tokensOutput),
+        fmtCompact(cache),
+      );
+    }
+    row.push(fmtCompact(p.tokensTotal), stackedBar(p.byTool, barW));
+    t.push(row);
+  }
+  return boxen(t.toString(), {
+    title: chalk.bold('Per Project'),
+    borderStyle: 'round',
+    borderColor: 'cyan',
+    padding: { top: 0, bottom: 0, left: 1, right: 1 },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Per Tool (detailed — complements the brief summary in Overview)
+// ---------------------------------------------------------------------------
+
+export function renderPerTool(records) {
+  const items = perTool(records);
+  if (items.length === 0) return '';
+  const max = items[0].tokensTotal;
+  const barW = NARROW ? 10 : 18;
+
+  const head = NARROW
+    ? [chalk.bold('Tool'), chalk.bold('n'),
+       chalk.bold('Total'), chalk.bold('Cost'), chalk.bold('Avg/sess'), chalk.bold('Dist')]
+    : [chalk.bold('Tool'), chalk.bold('n'),
+       chalk.bold('Input'), chalk.bold('Output'), chalk.bold('Cache'),
+       chalk.bold('Total'), chalk.bold('Cost'), chalk.bold('Avg/sess'), chalk.bold('Dist')];
+  const t = new Table({ head, style: { head: [], border: [] } });
+
+  for (const p of items) {
+    const cache = p.tokensCacheRead + p.tokensCacheWrite;
     const row = [
       colorize(p.tool, toolColor(p.tool)),
-      truncEnd(p.project, NARROW ? 26 : 38),
       fmtInt(p.n),
     ];
     if (!NARROW) {
@@ -278,12 +327,63 @@ export function renderPerProject(records) {
     }
     row.push(
       fmtCompact(p.tokensTotal),
-      bar(p.tokensTotal, max, barW, toolColor(p.tool)),
+      fmtCost(p.cost),
+      fmtCompact(p.avg),
+      bar(p.tokensTotal, max, barW),
     );
     t.push(row);
   }
   return boxen(t.toString(), {
-    title: chalk.bold('Per Project'),
+    title: chalk.bold('Per Tool'),
+    borderStyle: 'round',
+    borderColor: 'magenta',
+    padding: { top: 0, bottom: 0, left: 1, right: 1 },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Per Tool per Month (cross-tab — one row per (tool, month))
+// ---------------------------------------------------------------------------
+
+export function renderPerToolPerMonth(records) {
+  const items = perToolPerMonth(records);
+  if (items.length === 0) return '';
+  const max = items[0].tokensTotal;
+  const barW = NARROW ? 8 : 16;
+
+  const head = NARROW
+    ? [chalk.bold('Tool'), chalk.bold('Month'), chalk.bold('n'),
+       chalk.bold('Total'), chalk.bold('Dist')]
+    : [chalk.bold('Tool'), chalk.bold('Month'), chalk.bold('n'),
+       chalk.bold('Input'), chalk.bold('Output'), chalk.bold('Cache'),
+       chalk.bold('Total'), chalk.bold('Dist')];
+  const t = new Table({ head, style: { head: [], border: [] } });
+
+  for (const p of items) {
+    const cache = p.tokensCacheRead + p.tokensCacheWrite;
+    const yyyy = p.month.slice(0, 4);
+    const mm = p.month.slice(5, 7);
+    const monthLabel = `${MONTH_NAMES[mm] || mm} ${yyyy}`;
+    const row = [
+      colorize(p.tool, toolColor(p.tool)),
+      chalk.bold(monthLabel),
+      fmtInt(p.n),
+    ];
+    if (!NARROW) {
+      row.push(
+        fmtCompact(p.tokensInput),
+        fmtCompact(p.tokensOutput),
+        fmtCompact(cache),
+      );
+    }
+    row.push(
+      fmtCompact(p.tokensTotal),
+      bar(p.tokensTotal, max, barW),
+    );
+    t.push(row);
+  }
+  return boxen(t.toString(), {
+    title: chalk.bold('Per Tool per Month'),
     borderStyle: 'round',
     borderColor: 'cyan',
     padding: { top: 0, bottom: 0, left: 1, right: 1 },
@@ -297,64 +397,42 @@ export function renderPerProject(records) {
 export function renderPerMonth(records) {
   const items = perMonth(records);
   if (items.length === 0) return '';
-  const max = Math.max(...items.map(p => p.tokensTotal));
   const barW = NARROW ? 10 : 16;
-  const t1 = perTool(records);
 
-  // Narrow mode: drop the byTool columns (OC/CX/MM), keep core metrics
-  const head = NARROW
-    ? [chalk.bold('Month'), chalk.bold('n'),
-       chalk.bold('Input'), chalk.bold('Output'),
-       chalk.bold('Total'), chalk.bold('Dist')]
-    : [chalk.bold('Month'), chalk.bold('n'),
-       chalk.bold('Input'), chalk.bold('Output'),
-       chalk.bold('Total'), chalk.bold('OC'),
-       chalk.bold('CX'), chalk.bold('MM'), chalk.bold('Dist')];
+  const head = [
+    chalk.bold('Month'), chalk.bold('n'),
+    chalk.bold('Input'), chalk.bold('Output'),
+    chalk.bold('Total'), chalk.bold('Dist'),
+  ];
   const t = new Table({ head, style: { head: [], border: [] } });
 
   for (const p of items) {
     const yyyy = p.month.slice(0, 4);
     const mm = p.month.slice(5, 7);
     const label = `${MONTH_NAMES[mm] || mm} ${yyyy}`;
-    const row = [
+    t.push([
       chalk.bold(label),
       fmtInt(p.n),
       fmtCompact(p.tokensInput),
       fmtCompact(p.tokensOutput),
       fmtCompact(p.tokensTotal),
-    ];
-    if (!NARROW) {
-      row.push(
-        p.byTool.opencode ? fmtCompact(p.byTool.opencode) : chalk.dim('—'),
-        p.byTool.codex ? fmtCompact(p.byTool.codex) : chalk.dim('—'),
-        p.byTool.mimocode ? fmtCompact(p.byTool.mimocode) : chalk.dim('—'),
-      );
-    }
-    row.push(bar(p.tokensTotal, max, barW, 'green'));
-    t.push(row);
+      stackedBar(p.byTool, barW),
+    ]);
   }
 
   // TOTAL row
   const tot = overall(records);
-  const totalRow = [
+  t.push([
     chalk.bgGray.white.bold(' TOTAL '),
     chalk.bgGray.white.bold(fmtInt(records.length)),
     chalk.bgGray.white.bold(fmtCompact(tot.tokensInput)),
     chalk.bgGray.white.bold(fmtCompact(tot.tokensOutput)),
     chalk.bgGray.white.bold(fmtCompact(tot.tokensTotal)),
-  ];
-  if (!NARROW) {
-    totalRow.push(
-      chalk.bgGray.white.bold(fmtCompact(t1.find(p => p.tool === 'opencode')?.tokensTotal || 0)),
-      chalk.bgGray.white.bold(fmtCompact(t1.find(p => p.tool === 'codex')?.tokensTotal || 0)),
-      chalk.bgGray.white.bold(fmtCompact(t1.find(p => p.tool === 'mimocode')?.tokensTotal || 0)),
-    );
-  }
-  totalRow.push('');
-  t.push(totalRow);
+    '',
+  ]);
 
   return boxen(t.toString(), {
-    title: chalk.bold('Per Bulan (Monthly)'),
+    title: chalk.bold('Per Month'),
     borderStyle: 'round',
     borderColor: 'green',
     padding: { top: 0, bottom: 0, left: 1, right: 1 },
@@ -368,60 +446,38 @@ export function renderPerMonth(records) {
 export function renderPerWeek(records) {
   const items = perWeek(records);
   if (items.length === 0) return '';
-  const max = Math.max(...items.map(p => p.tokensTotal));
   const barW = NARROW ? 10 : 14;
-  const t1 = perTool(records);
 
-  const head = NARROW
-    ? [chalk.bold('ISO Week'), chalk.bold('n'),
-       chalk.bold('Input'), chalk.bold('Output'),
-       chalk.bold('Total'), chalk.bold('Dist')]
-    : [chalk.bold('ISO Week'), chalk.bold('n'),
-       chalk.bold('Input'), chalk.bold('Output'),
-       chalk.bold('Total'), chalk.bold('OC'),
-       chalk.bold('CX'), chalk.bold('MM'), chalk.bold('Dist')];
+  const head = [
+    chalk.bold('ISO Week'), chalk.bold('n'),
+    chalk.bold('Input'), chalk.bold('Output'),
+    chalk.bold('Total'), chalk.bold('Dist'),
+  ];
   const t = new Table({ head, style: { head: [], border: [] } });
 
   for (const p of items) {
-    const dominantTool = Object.entries(p.byTool).sort((a, b) => b[1] - a[1])[0]?.[0] || 'opencode';
-    const row = [
+    t.push([
       chalk.bold(p.week),
       fmtInt(p.n),
       fmtCompact(p.tokensInput),
       fmtCompact(p.tokensOutput),
       fmtCompact(p.tokensTotal),
-    ];
-    if (!NARROW) {
-      row.push(
-        p.byTool.opencode ? fmtCompact(p.byTool.opencode) : chalk.dim('—'),
-        p.byTool.codex ? fmtCompact(p.byTool.codex) : chalk.dim('—'),
-        p.byTool.mimocode ? fmtCompact(p.byTool.mimocode) : chalk.dim('—'),
-      );
-    }
-    row.push(bar(p.tokensTotal, max, barW, toolColor(dominantTool)));
-    t.push(row);
+      stackedBar(p.byTool, barW),
+    ]);
   }
   // TOTAL row
   const tot = overall(records);
-  const totalRow = [
+  t.push([
     chalk.bgGray.white.bold(' TOTAL '),
     chalk.bgGray.white.bold(fmtInt(records.length)),
     chalk.bgGray.white.bold(fmtCompact(tot.tokensInput)),
     chalk.bgGray.white.bold(fmtCompact(tot.tokensOutput)),
     chalk.bgGray.white.bold(fmtCompact(tot.tokensTotal)),
-  ];
-  if (!NARROW) {
-    totalRow.push(
-      chalk.bgGray.white.bold(fmtCompact(t1.find(p => p.tool === 'opencode')?.tokensTotal || 0)),
-      chalk.bgGray.white.bold(fmtCompact(t1.find(p => p.tool === 'codex')?.tokensTotal || 0)),
-      chalk.bgGray.white.bold(fmtCompact(t1.find(p => p.tool === 'mimocode')?.tokensTotal || 0)),
-    );
-  }
-  totalRow.push('');
-  t.push(totalRow);
+    '',
+  ]);
 
   return boxen(t.toString(), {
-    title: chalk.bold('Per Minggu (Weekly)'),
+    title: chalk.bold('Per Week'),
     borderStyle: 'round',
     borderColor: 'magenta',
     padding: { top: 0, bottom: 0, left: 1, right: 1 },

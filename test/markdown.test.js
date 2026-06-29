@@ -177,3 +177,18 @@ test('markdown: missing dates show as em-dash', () => {
   });
   assert.ok(md.includes('**Range**: — → —'));
 });
+
+test('markdown: per-month and per-week have no hardcoded OC/CX/MM columns', () => {
+  const md = renderMarkdown({ records: RECORDS, detections: DETECTIONS_FULL });
+  // Find the Per Month header row
+  const perMonthHeader = md.split('\n').find(l => l.startsWith('| Month |'));
+  const perWeekHeader  = md.split('\n').find(l => l.startsWith('| Week |'));
+  assert.ok(perMonthHeader, 'Per Month header row missing');
+  assert.ok(perWeekHeader, 'Per Week header row missing');
+  for (const col of ['OC', 'CX', 'MM']) {
+    assert.ok(!perMonthHeader.includes(` ${col} `),
+      `Per Month header should not contain column ${col}: ${perMonthHeader}`);
+    assert.ok(!perWeekHeader.includes(` ${col} `),
+      `Per Week header should not contain column ${col}: ${perWeekHeader}`);
+  }
+});

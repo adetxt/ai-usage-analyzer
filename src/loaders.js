@@ -207,6 +207,113 @@ function walkJsonl(root, prefix) {
   return out;
 }
 
+// Walks Claude's projects/ tree. Top-level .jsonl files are sessions; files
+// under any `subagents/` subdir are deliberately skipped (their usage is
+// already represented in the parent session's assistant messages).
+function walkClaudeSessions(root) {
+  const out = [];
+  function walk(dir) {
+    let entries;
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const full = join(dir, e.name);
+      if (e.isDirectory()) {
+        if (e.name === 'subagents') continue;
+        walk(full);
+      } else if (e.isFile() && e.name.endsWith('.jsonl')) {
+        out.push(full);
+      }
+    }
+  }
+  walk(root);
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Claude Code JSONL loader
+// ---------------------------------------------------------------------------
+//
+// Each top-level file under projects/<encoded-cwd>/<UUID>.jsonl is one session.
+// Per assistant line, `message.usage` carries the per-turn token counts; we
+// dedupe by `message.id` (Claude Code emits streaming duplicates) and sum
+// across unique messages. cwd / model / timestamp come from the line itself.
+
+async function loadClaudeJsonl(rootDir) {
+  const records = [];
+  const errors = [];
+  const files = walkClaudeSessions(rootDir);
+
+  for (const f of files) {
+    try {
+      const rec = await parseClaudeSession(f);
+      if (rec) records.push(rec);
+    } catch (e) {
+      errors.push(`${f}: ${e.message}`);
+    }
+  }
+  return { records, errors };
+}
+
+async function parseClaudeSession(path) {
+  const sessionId = path.split('/').pop().replace('.jsonl', '');
+  const seenIds = new Set();
+  let cwd = '';
+  let model = '';
+  let firstTs = null;
+
+  let tokensInput = 0;
+  let tokensOutput = 0;
+  let tokensCacheRead = 0;
+  let tokensCacheWrite = 0;
+
+  const stream = createReadStream(path, { encoding: 'utf8' });
+  const rl = createInterface({ input: stream, crlfDelay: Infinity });
+  for await (const line of rl) {
+    if (!line) continue;
+    let ev;
+    try { ev = JSON.parse(line); } catch { continue; }
+    if (ev.type !== 'assistant') continue;
+    const msg = ev.message || {};
+    const usage = msg.usage;
+    if (!usage) continue;
+    const id = msg.id;
+    if (id) {
+      if (seenIds.has(id)) continue;
+      seenIds.add(id);
+    }
+    if (!cwd && typeof ev.cwd === 'string') cwd = ev.cwd;
+    if (!model && typeof msg.model === 'string') model = msg.model;
+    const ts = parseIsoMs(ev.timestamp);
+    if (firstTs === null && ts !== null) firstTs = ts;
+    tokensInput += usage.input_tokens || 0;
+    tokensOutput += usage.output_tokens || 0;
+    tokensCacheRead += usage.cache_read_input_tokens || 0;
+    tokensCacheWrite += usage.cache_creation_input_tokens || 0;
+  }
+
+  const tot = tokensInput + tokensOutput + tokensCacheRead + tokensCacheWrite;
+  if (tot === 0) return null;
+  const ts = firstTs ?? Date.now();
+
+  return {
+    tool: 'claude',
+    sessionId,
+    project: compactHome(cwd),
+    title: '',
+    week: isoWeekKey(ts),
+    month: monthKey(ts),
+    ts,
+    tokensInput,
+    tokensOutput,
+    tokensCacheRead,
+    tokensCacheWrite,
+    tokensReasoning: 0,
+    tokensTotal: tot,
+    cost: 0,
+    model,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Public: load all session records for given detectors
 // ---------------------------------------------------------------------------
@@ -226,8 +333,12 @@ export async function loadAll(detections) {
       const r = await loadCodexRollouts(d.path);
       all.push(...r.records);
       if (r.errors) errors.push(...r.errors);
+    } else if (d.key === 'claude') {
+      const r = await loadClaudeJsonl(d.path);
+      all.push(...r.records);
+      if (r.errors) errors.push(...r.errors);
     }
-    // For other tools (claude, copilot, antigravity, gemini), we only have
+    // For other tools (copilot, antigravity, gemini), we only have
     // presence info — no token data to load.
   }
   return { records: all, errors };

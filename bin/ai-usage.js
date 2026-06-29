@@ -7,7 +7,8 @@ import { loadAll, dateRange } from '../src/loaders.js';
 import { overall } from '../src/aggregate.js';
 import {
   renderHeader, renderDetections, renderOverview,
-  renderPerProject, renderPerMonth, renderPerWeek,
+  renderPerProject, renderPerTool, renderPerToolPerMonth,
+  renderPerMonth, renderPerWeek,
   renderTopSessions, renderNotes,
 } from '../src/render.js';
 import { renderMarkdown } from '../src/markdown.js';
@@ -23,6 +24,12 @@ const topN = (() => {
   const v = parseInt(args[i + 1], 10);
   return Number.isFinite(v) && v > 0 ? v : 5;
 })();
+const yearFilter = (() => {
+  const i = args.indexOf('--year');
+  if (i < 0) return null;
+  const v = parseInt(args[i + 1], 10);
+  return Number.isFinite(v) && v > 1970 && v < 3000 ? v : null;
+})();
 
 if (showHelp) {
   console.log(`
@@ -36,9 +43,11 @@ Options:
   --json             Output machine-readable JSON instead of TUI
   --markdown, --md   Output as a Markdown report (GitHub-flavored tables)
   --top N            Show top N heaviest sessions (default: 5)
+  --year YYYY        Filter records to a single year (e.g. --year 2026)
 
 Examples:
   ai-usage                       # default TUI
+  ai-usage --year 2026           # TUI, only 2026 sessions
   ai-usage --json | jq .summary  # pipe to jq
   ai-usage --md > report.md      # save as markdown
   ai-usage --top 20              # show top 20 sessions
@@ -49,7 +58,7 @@ Environment overrides (per-tool data path):
   AI_USAGE_PATHS_JSON='{"codex":"/custom/path",...}'
 
 Supported tools:
-  • Claude Code    — ~/.claude/projects  (presence only)
+  • Claude Code    — ~/.claude/projects  (tokens from per-message usage)
   • Codex          — ~/.codex/sessions      (tokens from token_count events)
   • OpenCode       — ~/.local/share/opencode/opencode.db  (tokens + cost)
   • MimoCode       — ~/.local/share/mimocode/mimocode.db  (tokens + cost)
@@ -68,7 +77,14 @@ if (jsonOut && mdOut) {
 async function main() {
   const t0 = Date.now();
   const detections = detectAll();
-  const { records, errors } = await loadAll(detections);
+  const { records: allRecords, errors } = await loadAll(detections);
+
+  // Apply --year filter before any aggregation so dateRange and totals
+  // reflect the filtered set.
+  const records = yearFilter !== null
+    ? allRecords.filter(r => r.month && r.month.startsWith(`${yearFilter}-`))
+    : allRecords;
+
   const range = dateRange(records);
   const tot = overall(records);
 
@@ -78,6 +94,7 @@ async function main() {
       summary: tot,
       dateRange: range,
       sessions: records,
+      filter: yearFilter !== null ? { year: yearFilter } : null,
       errors,
       generatedAt: new Date().toISOString(),
       durationMs: Date.now() - t0,
@@ -109,6 +126,8 @@ async function main() {
     sections.push(
       renderOverview(records, detections),
       renderPerProject(records),
+      renderPerTool(records),
+      renderPerToolPerMonth(records),
       renderPerMonth(records),
       renderPerWeek(records),
       renderTopSessions(records, topN),

@@ -25,13 +25,13 @@ src/aggregate.js   per-project/week/month/tool grouping
 src/render.js      TUI       src/markdown.js  →  Markdown
 ```
 
-- `detectors.js` returns one of `present` / `absent` per tool. It does **not** parse data.
-- `loaders.js` only has parsers for **`codex` (JSONL rollouts), `opencode` and `mimocode` (SQLite, shared schema)**. The other four tools — `claude`, `copilot`, `antigravity`, `gemini` — are **presence-only** by design: those tools don't store token counts locally, so there is nothing to load. Don't write a loader for them without first checking what data the tool actually persists.
-- To add a new tool, append a `DETECTORS` entry in `src/detectors.js`; if the tool has token data, add a loader branch in `src/loaders.js`. `TOOL_ORDER` is derived from `DETECTORS` order — keep it stable.
+- `detectors.js` is a thin orchestrator: it imports `TOOLS` from `src/tools.js`, probes paths, applies `$AI_USAGE_PATHS_JSON` overrides, and returns `present` / `absent` per tool. It does **not** parse data.
+- `tools.js` is the single source of truth for every supported tool — color, bar character, label, name, kind, env var, candidate paths, count function, `hasTokens`, and description. **Adding a new tool means appending one entry to `TOOLS` here.** Display tweaks (color, bar char) also live here, not in the renderers.
+- `loaders.js` has parsers for **`claude` (JSONL sessions — per-message `usage`, deduped by `message.id` since Claude Code emits streaming duplicates), `codex` (JSONL rollouts), and `opencode` / `mimocode` (SQLite, shared schema)**. The other three tools — `copilot`, `antigravity`, `gemini` — are **presence-only**: those tools don't store token counts locally, so there is nothing to load. Don't write a loader for them without first checking what data the tool actually persists.
 
 ## Detector path gotchas (real Claude Code layout, not the docs)
 
-- **Claude Code**: `~/.claude/projects/<encoded-cwd>/<UUID>.jsonl` — count function must recurse; the old `~/.claude/transcripts/ses_*.jsonl` layout is gone. The detector must NOT do a flat `readdirSync` on `projects/`.
+- **Claude Code**: `~/.claude/projects/<encoded-cwd>/<UUID>.jsonl` — count function must recurse; the old `~/.claude/transcripts/ses_*.jsonl` layout is gone. The detector must NOT do a flat `readdirSync` on `projects/`. The loader walks top-level files only and **skips `*/subagents/*`** (subagent usage is already represented in the parent session's assistant messages; counting it twice would inflate totals).
 - **Codex**: `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` — files are nested under date dirs.
 - **OpenCode / MimoCode**: single SQLite file (`opencode.db` / `mimocode.db`) with a `session` table; schema is shared, so loader introspects columns.
 - **macOS** `Antigravity` lives in `~/Library/Application Support/Antigravity`; **Linux** uses `~/.local/share` (via `XDG_DATA_HOME` fallback).
