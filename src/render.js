@@ -5,11 +5,18 @@ import Table from 'cli-table3';
 import boxen from 'boxen';
 import gradient from 'gradient-string';
 import process from 'node:process';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import {
   perProject, perMonth, perWeek, perTool, perToolPerMonth, overall, topSessions, tokenBreakdown,
   MONTH_NAMES,
 } from './aggregate.js';
 import { getToolColor } from './tools.js';
+
+const VERSION = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8'),
+).version;
 
 // ---------------------------------------------------------------------------
 // Terminal width detection
@@ -146,6 +153,8 @@ export function renderHeader({ totalSessions, totalTokens, totalCost, dateRange 
     ? chalk.dim.italic(`\n  range: ${dateRange[0]}  →  ${dateRange[1]}`)
     : '';
   return boxen(`${title}\n\n${sub}${range}`, {
+    title: chalk.dim(`v${VERSION}`),
+    titleAlignment: 'right',
     borderStyle: 'round',
     borderColor: 'magenta',
     padding: { top: 0, bottom: 0, left: 2, right: 2 },

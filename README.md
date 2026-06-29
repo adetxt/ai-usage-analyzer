@@ -19,20 +19,22 @@ Requires **Node.js ≥ 22.5** (for built-in `node:sqlite`).
 
 ```bash
 # Try it (no install)
-npx -y github:adetxt/ai-usage-analyzer
+npx -y ai-usage-analyzer
 
 # Or install globally
-pnpm add -g git+https://github.com/adetxt/ai-usage-analyzer.git
-ai-usage --help
+pnpm add -g ai-usage-analyzer
+ai-usage-analyzer --help
 ```
+
+The short alias `ai-usage` is also installed and works identically.
 
 ## Usage
 
 ```bash
-ai-usage                  # default TUI
-ai-usage --top 10         # show top 10 heaviest sessions
-ai-usage --json           # machine-readable JSON
-ai-usage --md > report.md # save as markdown
+ai-usage-analyzer                  # default TUI
+ai-usage-analyzer --top 10         # show top 10 heaviest sessions
+ai-usage-analyzer --json           # machine-readable JSON
+ai-usage-analyzer --md > report.md # save as markdown
 ```
 
 ## Supported tools
