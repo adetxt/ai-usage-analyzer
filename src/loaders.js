@@ -15,11 +15,27 @@
 //     model:       string,
 //   }
 
-import { readdirSync, readFileSync, statSync, openSync, readSync, closeSync } from 'node:fs';
-import { join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
-import { createInterface } from 'node:readline';
-import { createReadStream } from 'node:fs';
+import { createReadStream, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { createInterface } from "node:readline";
+import { DatabaseSync } from "node:sqlite";
+
+// Run fn over every item in items with at most `limit` in-flight at once.
+async function mapConcurrent(items, fn, limit) {
+  if (items.length === 0) return [];
+  const results = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i]);
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, worker),
+  );
+  return results;
+}
 
 // ---------------------------------------------------------------------------
 // Date helpers
@@ -28,17 +44,24 @@ import { createReadStream } from 'node:fs';
 function isoWeekKey(ts) {
   const d = new Date(ts);
   // ISO week: Thu in current week decides the year
-  const target = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const target = new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()),
+  );
   const dayNum = (target.getUTCDay() + 6) % 7; // Mon=0..Sun=6
   target.setUTCDate(target.getUTCDate() - dayNum + 3); // Thu
   const firstThu = new Date(Date.UTC(target.getUTCFullYear(), 0, 4));
-  const week = 1 + Math.round(((target - firstThu) / 86400000 - 3 + ((firstThu.getUTCDay() + 6) % 7)) / 7);
-  return `${target.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+  const week =
+    1 +
+    Math.round(
+      ((target - firstThu) / 86400000 - 3 + ((firstThu.getUTCDay() + 6) % 7)) /
+        7,
+    );
+  return `${target.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
 }
 
 function monthKey(ts) {
   const d = new Date(ts);
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
 function parseIsoMs(s) {
@@ -48,9 +71,9 @@ function parseIsoMs(s) {
 }
 
 function compactHome(p) {
-  if (!p) return '(unknown)';
-  const home = process.env.HOME || '';
-  return p.startsWith(home) ? '~' + p.slice(home.length) : p;
+  if (!p) return "(unknown)";
+  const home = process.env.HOME || "";
+  return p.startsWith(home) ? "~" + p.slice(home.length) : p;
 }
 
 // ---------------------------------------------------------------------------
@@ -67,40 +90,53 @@ function loadOpencodeStyleSqlite(dbPath, toolKey) {
 
   // Introspect session table for token columns (MimoCode schema is a subset)
   const cols = db.prepare(`PRAGMA table_info(session)`).all();
-  const colSet = new Set(cols.map(c => c.name));
-  const hasTokens = colSet.has('tokens_input')
-                 && colSet.has('tokens_output')
-                 && colSet.has('tokens_cache_read')
-                 && colSet.has('tokens_cache_write');
+  const colSet = new Set(cols.map((c) => c.name));
+  const hasTokens =
+    colSet.has("tokens_input") &&
+    colSet.has("tokens_output") &&
+    colSet.has("tokens_cache_read") &&
+    colSet.has("tokens_cache_write");
 
   if (!hasTokens) {
     db.close();
-    return { records: [], info: 'session table has no token columns' };
+    return { records: [], info: "session table has no token columns" };
   }
 
-  const rows = db.prepare(`
+  const hasTimeUpdated = colSet.has("time_updated");
+  const rows = db
+    .prepare(
+      `
     SELECT id, directory, title, time_created,
+           ${hasTimeUpdated ? "time_updated," : ""}
            tokens_input, tokens_output, tokens_reasoning,
            tokens_cache_read, tokens_cache_write, cost, model
     FROM session
     WHERE time_archived IS NULL
-  `).all();
+  `,
+    )
+    .all();
   db.close();
 
   const records = [];
   for (const r of rows) {
-    const tot = (r.tokens_input || 0) + (r.tokens_output || 0)
-              + (r.tokens_reasoning || 0) + (r.tokens_cache_read || 0)
-              + (r.tokens_cache_write || 0);
+    const tot =
+      (r.tokens_input || 0) +
+      (r.tokens_output || 0) +
+      (r.tokens_reasoning || 0) +
+      (r.tokens_cache_read || 0) +
+      (r.tokens_cache_write || 0);
     if (tot === 0) continue;
     records.push({
       tool: toolKey,
       sessionId: r.id,
       project: compactHome(r.directory),
-      title: r.title || '',
+      title: r.title || "",
       week: isoWeekKey(r.time_created),
       month: monthKey(r.time_created),
       ts: r.time_created,
+      durationMs: hasTimeUpdated
+        ? Math.max(0, (r.time_updated || r.time_created) - r.time_created)
+        : 0,
       tokensInput: r.tokens_input || 0,
       tokensOutput: r.tokens_output || 0,
       tokensCacheRead: r.tokens_cache_read || 0,
@@ -108,7 +144,7 @@ function loadOpencodeStyleSqlite(dbPath, toolKey) {
       tokensReasoning: r.tokens_reasoning || 0,
       tokensTotal: tot,
       cost: r.cost || 0,
-      model: r.model || '',
+      model: r.model || "",
     });
   }
   return { records };
@@ -119,19 +155,21 @@ function loadOpencodeStyleSqlite(dbPath, toolKey) {
 // ---------------------------------------------------------------------------
 
 async function loadCodexRollouts(rootDir) {
-  const records = [];
   const errors = [];
-  const files = walkJsonl(rootDir, 'rollout-');
-
-  for (const f of files) {
-    try {
-      const rec = await parseCodexRollout(f);
-      if (rec) records.push(rec);
-    } catch (e) {
-      errors.push(`${f}: ${e.message}`);
-    }
-  }
-  return { records, errors };
+  const files = walkJsonl(rootDir, "rollout-");
+  const results = await mapConcurrent(
+    files,
+    async (f) => {
+      try {
+        return await parseCodexRollout(f);
+      } catch (e) {
+        errors.push(`${f}: ${e.message}`);
+        return null;
+      }
+    },
+    48,
+  );
+  return { records: results.filter(Boolean), errors };
 }
 
 async function parseCodexRollout(path) {
@@ -139,19 +177,26 @@ async function parseCodexRollout(path) {
   // The 'token_count' event accumulates usage; we take the LAST one (final snapshot).
   let sessionMeta = null;
   let lastUsage = null;
-  let lastModel = '';
+  let lastModel = "";
+  let lastEvTs = null;
 
-  const stream = createReadStream(path, { encoding: 'utf8' });
+  const stream = createReadStream(path, { encoding: "utf8" });
   const rl = createInterface({ input: stream, crlfDelay: Infinity });
   for await (const line of rl) {
     if (!line) continue;
     let ev;
-    try { ev = JSON.parse(line); } catch { continue; }
+    try {
+      ev = JSON.parse(line);
+    } catch {
+      continue;
+    }
     const t = ev.type;
     const p = ev.payload || {};
-    if (t === 'session_meta') {
-      sessionMeta = { ts: ev.timestamp, cwd: p.cwd || p.CWD || '' };
-    } else if (t === 'event_msg' && p.type === 'token_count') {
+    const evTs = parseIsoMs(ev.timestamp);
+    if (evTs) lastEvTs = evTs;
+    if (t === "session_meta") {
+      sessionMeta = { ts: ev.timestamp, cwd: p.cwd || p.CWD || "" };
+    } else if (t === "event_msg" && p.type === "token_count") {
       const info = p.info || {};
       const u = info.total_token_usage;
       if (u) lastUsage = u;
@@ -163,6 +208,7 @@ async function parseCodexRollout(path) {
 
   const ts = parseIsoMs(sessionMeta.ts);
   if (!ts) return null;
+  const durationMs = lastEvTs && lastEvTs > ts ? lastEvTs - ts : 0;
 
   const tokensInput = lastUsage.input_tokens || 0;
   const tokensOutput = lastUsage.output_tokens || 0;
@@ -172,17 +218,18 @@ async function parseCodexRollout(path) {
   if (tot === 0) return null;
 
   return {
-    tool: 'codex',
-    sessionId: path.split('-').pop().replace('.jsonl', ''),
+    tool: "codex",
+    sessionId: path.split("-").pop().replace(".jsonl", ""),
     project: compactHome(sessionMeta.cwd),
-    title: '',  // not available in codex rollouts
+    title: "",
     week: isoWeekKey(ts),
     month: monthKey(ts),
     ts,
+    durationMs,
     tokensInput,
     tokensOutput,
     tokensCacheRead,
-    tokensCacheWrite: 0,  // codex doesn't expose cache_write separately
+    tokensCacheWrite: 0, // codex doesn't expose cache_write separately
     tokensReasoning,
     tokensTotal: tot,
     cost: 0,
@@ -194,11 +241,19 @@ function walkJsonl(root, prefix) {
   const out = [];
   function walk(dir) {
     let entries;
-    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
     for (const e of entries) {
       const full = join(dir, e.name);
       if (e.isDirectory()) walk(full);
-      else if (e.isFile() && e.name.startsWith(prefix) && e.name.endsWith('.jsonl')) {
+      else if (
+        e.isFile() &&
+        e.name.startsWith(prefix) &&
+        e.name.endsWith(".jsonl")
+      ) {
         out.push(full);
       }
     }
@@ -214,13 +269,17 @@ function walkClaudeSessions(root) {
   const out = [];
   function walk(dir) {
     let entries;
-    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
     for (const e of entries) {
       const full = join(dir, e.name);
       if (e.isDirectory()) {
-        if (e.name === 'subagents') continue;
+        if (e.name === "subagents") continue;
         walk(full);
-      } else if (e.isFile() && e.name.endsWith('.jsonl')) {
+      } else if (e.isFile() && e.name.endsWith(".jsonl")) {
         out.push(full);
       }
     }
@@ -239,40 +298,51 @@ function walkClaudeSessions(root) {
 // across unique messages. cwd / model / timestamp come from the line itself.
 
 async function loadClaudeJsonl(rootDir) {
-  const records = [];
   const errors = [];
   const files = walkClaudeSessions(rootDir);
-
-  for (const f of files) {
-    try {
-      const rec = await parseClaudeSession(f);
-      if (rec) records.push(rec);
-    } catch (e) {
-      errors.push(`${f}: ${e.message}`);
-    }
-  }
-  return { records, errors };
+  const results = await mapConcurrent(
+    files,
+    async (f) => {
+      try {
+        return await parseClaudeSession(f);
+      } catch (e) {
+        errors.push(`${f}: ${e.message}`);
+        return null;
+      }
+    },
+    48,
+  );
+  return { records: results.filter(Boolean), errors };
 }
 
 async function parseClaudeSession(path) {
-  const sessionId = path.split('/').pop().replace('.jsonl', '');
+  const sessionId = path.split("/").pop().replace(".jsonl", "");
   const seenIds = new Set();
-  let cwd = '';
-  let model = '';
+  let cwd = "";
+  let model = "";
   let firstTs = null;
+  let lastTs = null;
+  let title = "";
 
   let tokensInput = 0;
   let tokensOutput = 0;
   let tokensCacheRead = 0;
   let tokensCacheWrite = 0;
 
-  const stream = createReadStream(path, { encoding: 'utf8' });
+  const stream = createReadStream(path, { encoding: "utf8" });
   const rl = createInterface({ input: stream, crlfDelay: Infinity });
   for await (const line of rl) {
     if (!line) continue;
     let ev;
-    try { ev = JSON.parse(line); } catch { continue; }
-    if (ev.type !== 'assistant') continue;
+    try {
+      ev = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    // Grab summary title from the first human message that has one.
+    if (!title && ev.type === "summary" && typeof ev.summary === "string")
+      title = ev.summary;
+    if (ev.type !== "assistant") continue;
     const msg = ev.message || {};
     const usage = msg.usage;
     if (!usage) continue;
@@ -281,10 +351,11 @@ async function parseClaudeSession(path) {
       if (seenIds.has(id)) continue;
       seenIds.add(id);
     }
-    if (!cwd && typeof ev.cwd === 'string') cwd = ev.cwd;
-    if (!model && typeof msg.model === 'string') model = msg.model;
-    const ts = parseIsoMs(ev.timestamp);
-    if (firstTs === null && ts !== null) firstTs = ts;
+    if (!cwd && typeof ev.cwd === "string") cwd = ev.cwd;
+    if (!model && typeof msg.model === "string") model = msg.model;
+    const evTs = parseIsoMs(ev.timestamp);
+    if (firstTs === null && evTs !== null) firstTs = evTs;
+    if (evTs !== null) lastTs = evTs;
     tokensInput += usage.input_tokens || 0;
     tokensOutput += usage.output_tokens || 0;
     tokensCacheRead += usage.cache_read_input_tokens || 0;
@@ -294,15 +365,17 @@ async function parseClaudeSession(path) {
   const tot = tokensInput + tokensOutput + tokensCacheRead + tokensCacheWrite;
   if (tot === 0) return null;
   const ts = firstTs ?? Date.now();
+  const durationMs = firstTs !== null && lastTs !== null ? lastTs - firstTs : 0;
 
   return {
-    tool: 'claude',
+    tool: "claude",
     sessionId,
     project: compactHome(cwd),
-    title: '',
+    title,
     week: isoWeekKey(ts),
     month: monthKey(ts),
     ts,
+    durationMs,
     tokensInput,
     tokensOutput,
     tokensCacheRead,
@@ -322,24 +395,29 @@ export async function loadAll(detections) {
   const all = [];
   const errors = [];
 
-  for (const d of detections) {
-    if (d.status !== 'present') continue;
-    if (d.key === 'opencode' || d.key === 'mimocode') {
-      const r = loadOpencodeStyleSqlite(d.path, d.key);
-      all.push(...r.records);
-      if (r.error) errors.push(`${d.name}: ${r.error}`);
-      if (r.info) errors.push(`${d.name}: ${r.info}`);
-    } else if (d.key === 'codex') {
-      const r = await loadCodexRollouts(d.path);
-      all.push(...r.records);
-      if (r.errors) errors.push(...r.errors);
-    } else if (d.key === 'claude') {
-      const r = await loadClaudeJsonl(d.path);
-      all.push(...r.records);
-      if (r.errors) errors.push(...r.errors);
-    }
-    // For other tools (copilot, antigravity, gemini), we only have
-    // presence info — no token data to load.
+  const tasks = detections
+    .filter((d) => d.status === "present")
+    .map((d) => {
+      if (d.key === "opencode" || d.key === "mimocode") {
+        return Promise.resolve({
+          d,
+          r: loadOpencodeStyleSqlite(d.path, d.key),
+        });
+      } else if (d.key === "codex") {
+        return loadCodexRollouts(d.path).then((r) => ({ d, r }));
+      } else if (d.key === "claude") {
+        return loadClaudeJsonl(d.path).then((r) => ({ d, r }));
+      }
+      return null;
+    })
+    .filter(Boolean);
+
+  for (const item of await Promise.all(tasks)) {
+    const { d, r } = item;
+    all.push(...r.records);
+    if (r.error) errors.push(`${d.name}: ${r.error}`);
+    if (r.info) errors.push(`${d.name}: ${r.info}`);
+    if (r.errors) errors.push(...r.errors);
   }
   return { records: all, errors };
 }
@@ -350,7 +428,8 @@ export async function loadAll(detections) {
 
 export function dateRange(records) {
   if (records.length === 0) return [null, null];
-  let min = Infinity, max = -Infinity;
+  let min = Infinity,
+    max = -Infinity;
   for (const r of records) {
     if (r.ts < min) min = r.ts;
     if (r.ts > max) max = r.ts;

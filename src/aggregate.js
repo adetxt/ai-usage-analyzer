@@ -1,9 +1,18 @@
 // Group session records by various dimensions and compute stats.
 
 const MONTH_NAMES = {
-  '01': 'Jan', '02': 'Feb', '03': 'Mar', '04': 'Apr',
-  '05': 'May', '06': 'Jun', '07': 'Jul', '08': 'Aug',
-  '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dec',
+  "01": "Jan",
+  "02": "Feb",
+  "03": "Mar",
+  "04": "Apr",
+  "05": "May",
+  "06": "Jun",
+  "07": "Jul",
+  "08": "Aug",
+  "09": "Sep",
+  10: "Oct",
+  11: "Nov",
+  12: "Dec",
 };
 
 function sum(arr, key) {
@@ -27,14 +36,14 @@ export function groupBy(records, keyFn) {
 function summarize(records) {
   return {
     n: records.length,
-    tokensTotal: sum(records, 'tokensTotal'),
-    tokensInput: sum(records, 'tokensInput'),
-    tokensOutput: sum(records, 'tokensOutput'),
-    tokensCacheRead: sum(records, 'tokensCacheRead'),
-    tokensCacheWrite: sum(records, 'tokensCacheWrite'),
-    tokensReasoning: sum(records, 'tokensReasoning'),
-    cost: sum(records, 'cost'),
-    avg: avg(records, 'tokensTotal'),
+    tokensTotal: sum(records, "tokensTotal"),
+    tokensInput: sum(records, "tokensInput"),
+    tokensOutput: sum(records, "tokensOutput"),
+    tokensCacheRead: sum(records, "tokensCacheRead"),
+    tokensCacheWrite: sum(records, "tokensCacheWrite"),
+    tokensReasoning: sum(records, "tokensReasoning"),
+    cost: sum(records, "cost"),
+    avg: avg(records, "tokensTotal"),
   };
 }
 
@@ -46,21 +55,34 @@ function toolBreakdown(records) {
   return byTool;
 }
 
+function toolSessionCount(records) {
+  const nByTool = {};
+  for (const r of records) {
+    nByTool[r.tool] = (nByTool[r.tool] || 0) + 1;
+  }
+  return nByTool;
+}
+
 export function perProject(records) {
   // One row per project — tool mix is shown via the stacked bar / byTool,
   // not as a separate column. Detailed per-tool-per-project breakdown
   // is no longer surfaced here; the "Per Tool per Month" section is the
   // place to see per-tool data over time.
-  const m = groupBy(records, r => r.project);
+  const m = groupBy(records, (r) => r.project);
   const out = [];
   for (const [project, arr] of m) {
-    out.push({ project, ...summarize(arr), byTool: toolBreakdown(arr) });
+    out.push({
+      project,
+      ...summarize(arr),
+      byTool: toolBreakdown(arr),
+      nByTool: toolSessionCount(arr),
+    });
   }
   return out.sort((a, b) => b.tokensTotal - a.tokensTotal);
 }
 
 export function perMonth(records) {
-  const m = groupBy(records, r => r.month);
+  const m = groupBy(records, (r) => r.month);
   const out = [];
   for (const [month, arr] of m) {
     out.push({ month, ...summarize(arr), byTool: toolBreakdown(arr) });
@@ -69,7 +91,7 @@ export function perMonth(records) {
 }
 
 export function perWeek(records) {
-  const m = groupBy(records, r => r.week);
+  const m = groupBy(records, (r) => r.week);
   const out = [];
   for (const [week, arr] of m) {
     out.push({ week, ...summarize(arr), byTool: toolBreakdown(arr) });
@@ -78,7 +100,7 @@ export function perWeek(records) {
 }
 
 export function perTool(records) {
-  const m = groupBy(records, r => r.tool);
+  const m = groupBy(records, (r) => r.tool);
   const out = [];
   for (const [tool, arr] of m) {
     out.push({ tool, ...summarize(arr) });
@@ -90,10 +112,10 @@ export function perToolPerMonth(records) {
   // Cross-tab: one row per (tool, month). Lets you see how a single tool's
   // usage is distributed across months — and avoids the hardcoded OC/CX/MM
   // column problem in the per-month table.
-  const m = groupBy(records, r => `${r.tool}\u0001${r.month}`);
+  const m = groupBy(records, (r) => `${r.tool}\u0001${r.month}`);
   const out = [];
   for (const [k, arr] of m) {
-    const [tool, month] = k.split('\u0001');
+    const [tool, month] = k.split("\u0001");
     out.push({ tool, month, ...summarize(arr) });
   }
   return out.sort((a, b) => b.tokensTotal - a.tokensTotal);
@@ -104,9 +126,7 @@ export function overall(records) {
 }
 
 export function topSessions(records, n = 5) {
-  return [...records]
-    .sort((a, b) => b.tokensTotal - a.tokensTotal)
-    .slice(0, n);
+  return [...records].sort((a, b) => b.tokensTotal - a.tokensTotal).slice(0, n);
 }
 
 export function tokenBreakdown(s) {

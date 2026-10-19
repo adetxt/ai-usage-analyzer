@@ -2,30 +2,39 @@
 // AI Usage Analyzer - TUI for local AI coding agent token consumption
 // Auto-detects: Claude Code, Codex, OpenCode, MimoCode, Copilot, Antigravity, Gemini
 
-import { detectAll } from '../src/detectors.js';
-import { loadAll, dateRange } from '../src/loaders.js';
-import { overall } from '../src/aggregate.js';
+import { overall } from "../src/aggregate.js";
+import { detectAll } from "../src/detectors.js";
+import { dateRange, loadAll } from "../src/loaders.js";
+import { renderMarkdown } from "../src/markdown.js";
 import {
-  renderHeader, renderDetections, renderOverview,
-  renderPerProject, renderPerTool, renderPerToolPerMonth,
-  renderPerMonth, renderPerWeek,
-  renderTopSessions, renderNotes,
-} from '../src/render.js';
-import { renderMarkdown } from '../src/markdown.js';
+    renderDetections,
+    renderHeader,
+    renderNotes,
+    renderOverview,
+    renderPerMonth,
+    renderPerProject,
+    renderPerTool,
+    renderPerToolPerMonth,
+    renderPerWeek,
+    renderTopSessions,
+} from "../src/render.js";
+import { runInteractive } from "../src/tui.js";
 
 const args = process.argv.slice(2);
-const hasFlag = (name) => args.includes(`--${name}`) || args.includes(`-${name}`);
-const showHelp = hasFlag('help') || hasFlag('h');
-const jsonOut = hasFlag('json');
-const mdOut = hasFlag('markdown') || hasFlag('md');
+const hasFlag = (name) =>
+  args.includes(`--${name}`) || args.includes(`-${name}`);
+const showHelp = hasFlag("help") || hasFlag("h");
+const jsonOut = hasFlag("json");
+const mdOut = hasFlag("markdown") || hasFlag("md");
+const staticOut = hasFlag("static") || hasFlag("no-interactive");
 const topN = (() => {
-  const i = args.indexOf('--top');
+  const i = args.indexOf("--top");
   if (i < 0) return 5;
   const v = parseInt(args[i + 1], 10);
   return Number.isFinite(v) && v > 0 ? v : 5;
 })();
 const yearFilter = (() => {
-  const i = args.indexOf('--year');
+  const i = args.indexOf("--year");
   if (i < 0) return null;
   const v = parseInt(args[i + 1], 10);
   return Number.isFinite(v) && v > 1970 && v < 3000 ? v : null;
@@ -39,11 +48,12 @@ Usage:
   ai-usage [options]
 
 Options:
-  -h, --help         Show this help
-  --json             Output machine-readable JSON instead of TUI
-  --markdown, --md   Output as a Markdown report (GitHub-flavored tables)
-  --top N            Show top N heaviest sessions (default: 5)
-  --year YYYY        Filter records to a single year (e.g. --year 2026)
+  -h, --help               Show this help
+  --json                   Output machine-readable JSON instead of TUI
+  --markdown, --md         Output as a Markdown report (GitHub-flavored tables)
+  --static, --no-interactive  Disable interactive mode; dump all sections at once
+  --top N                  Show top N heaviest sessions (default: 5)
+  --year YYYY              Filter records to a single year (e.g. --year 2026)
 
 Examples:
   ai-usage                       # default TUI
@@ -70,7 +80,7 @@ Supported tools:
 }
 
 if (jsonOut && mdOut) {
-  console.error('Error: --json and --markdown are mutually exclusive.');
+  console.error("Error: --json and --markdown are mutually exclusive.");
   process.exit(2);
 }
 
@@ -81,9 +91,12 @@ async function main() {
 
   // Apply --year filter before any aggregation so dateRange and totals
   // reflect the filtered set.
-  const records = yearFilter !== null
-    ? allRecords.filter(r => r.month && r.month.startsWith(`${yearFilter}-`))
-    : allRecords;
+  const records =
+    yearFilter !== null
+      ? allRecords.filter(
+          (r) => r.month && r.month.startsWith(`${yearFilter}-`),
+        )
+      : allRecords;
 
   const range = dateRange(records);
   const tot = overall(records);
@@ -105,14 +118,24 @@ async function main() {
 
   if (mdOut) {
     const out = renderMarkdown({
-      records, detections, errors,
-      dateRange: range, topN, generatedAt: new Date().toISOString(),
+      records,
+      detections,
+      errors,
+      dateRange: range,
+      topN,
+      generatedAt: new Date().toISOString(),
     });
     process.stdout.write(out);
     return;
   }
 
-  // TUI render
+  // Interactive TUI (default when stdout is a TTY and --static not given)
+  if (!staticOut) {
+    const handled = await runInteractive({ records, detections, errors, topN });
+    if (handled) return;
+  }
+
+  // Static fallback (--static, --no-interactive, or piped output)
   const sections = [
     renderHeader({
       totalSessions: records.length,
@@ -135,10 +158,10 @@ async function main() {
   }
   sections.push(renderNotes(detections, errors));
 
-  console.log(sections.join('\n\n'));
+  console.log(sections.join("\n\n"));
 }
 
-main().catch(err => {
-  console.error('Fatal error:', err);
+main().catch((err) => {
+  console.error("Fatal error:", err);
   process.exit(1);
 });
