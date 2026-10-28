@@ -31,9 +31,10 @@ export function fmtCompact(n) {
   return String(n || 0);
 }
 
-function fmtCost(n) {
+function fmtCost(n, status) {
+  if (status === "unavailable") return "unavailable";
   if (!n) return "—";
-  return "$" + Number(n).toFixed(2);
+  return (status === "estimated" || status === "partial" ? "~" : "") + "$" + Number(n).toFixed(2) + (status === "partial" ? " (partial)" : "");
 }
 
 function compactHome(p) {
@@ -131,9 +132,8 @@ export function renderMarkdown({
     out.push(`**Range**: ${dateRange[0] ?? "—"} → ${dateRange[1] ?? "—"}  `);
     out.push(`**Sessions**: ${fmtInt(records.length)}  `);
     out.push(`**Total tokens**: ${fmtCompact(tot.tokensTotal)}  `);
-    if (tot.cost > 0) {
-      out.push(`**Cost**: ${fmtCost(tot.cost)} (opencode only)  `);
-    }
+    out.push(`**Cost**: ${fmtCost(tot.cost, tot.costStatus)}  `);
+    if (tot.unknownModels.length) out.push(`**Unpriced models**: ${tot.unknownModels.map(mdEscape).join(", ")}  `);
   } else {
     out.push(`**No session data available** — only detection status below.`);
   }
@@ -174,11 +174,11 @@ export function renderMarkdown({
   out.push(`|---|---:|---:|---:|---:|`);
   for (const t of tools) {
     out.push(
-      `| ${mdEscape(t.tool)} | ${fmtInt(t.n)} | ${fmtCompact(t.tokensTotal)} | ${fmtCompact(t.avg)} | ${fmtCost(t.cost)} |`,
+      `| ${mdEscape(t.tool)} | ${fmtInt(t.n)} | ${fmtCompact(t.tokensTotal)} | ${fmtCompact(t.avg)} | ${fmtCost(t.cost, t.costStatus)} |`,
     );
   }
   out.push(
-    `| **TOTAL** | **${fmtInt(records.length)}** | **${fmtCompact(tot.tokensTotal)}** | **${fmtCompact(tot.avg)}** | **${fmtCost(tot.cost)}** |`,
+    `| **TOTAL** | **${fmtInt(records.length)}** | **${fmtCompact(tot.tokensTotal)}** | **${fmtCompact(tot.avg)}** | **${fmtCost(tot.cost, tot.costStatus)}** |`,
   );
   out.push(``);
 
@@ -245,7 +245,7 @@ export function renderMarkdown({
     for (const p of toolRows) {
       const cache = p.tokensCacheRead + p.tokensCacheWrite;
       out.push(
-        `| ${mdEscape(p.tool)} | ${fmtInt(p.n)} | ${fmtCompact(p.tokensInput)} | ${fmtCompact(p.tokensOutput)} | ${fmtCompact(cache)} | ${fmtCompact(p.tokensTotal)} | ${fmtCost(p.cost)} | ${fmtCompact(p.avg)} | ${bar(p.tokensTotal, max, 20)} |`,
+        `| ${mdEscape(p.tool)} | ${fmtInt(p.n)} | ${fmtCompact(p.tokensInput)} | ${fmtCompact(p.tokensOutput)} | ${fmtCompact(cache)} | ${fmtCompact(p.tokensTotal)} | ${fmtCost(p.cost, p.costStatus)} | ${fmtCompact(p.avg)} | ${bar(p.tokensTotal, max, 20)} |`,
       );
     }
     out.push(``);
@@ -316,7 +316,7 @@ export function renderMarkdown({
     top.forEach((r, i) => {
       const proj = compactHome(r.project);
       out.push(
-        `| ${i + 1} | ${fmtCompact(r.tokensTotal)} | ${fmtCompact(r.tokensInput)} | ${fmtCompact(r.tokensOutput)} | ${r.cost ? "$" + r.cost.toFixed(4) : "—"} | ${mdEscape(shortModel(r.model))} | \`${mdEscape(proj)}\` | ${mdEscape(r.title || "—")} |`,
+        `| ${i + 1} | ${fmtCompact(r.tokensTotal)} | ${fmtCompact(r.tokensInput)} | ${fmtCompact(r.tokensOutput)} | ${fmtCost(r.cost, r.costStatus)} | ${mdEscape(shortModel(r.model))} | \`${mdEscape(proj)}\` | ${mdEscape(r.title || "—")} |`,
       );
     });
     out.push(``);
@@ -324,6 +324,8 @@ export function renderMarkdown({
 
   // Notes ---------------------------------------------------------------
   out.push(`## Notes`);
+  out.push(``);
+  out.push(`Costs marked ~ are API-equivalent estimates; partial totals exclude unpriced usage. Recorded costs come from local tool data and are not necessarily subscription charges.`);
   out.push(``);
   out.push(`### Token Definitions`);
   out.push(``);
@@ -333,7 +335,7 @@ export function renderMarkdown({
     `- **Cache Read** — prompt tokens served from the provider's cache (cheap)`,
   );
   out.push(
-    `- **Cache Write** — prompt tokens cached for future use (OpenCode only)`,
+    `- **Cache Write** — prompt tokens cached for future use`,
   );
   out.push(`- **Reasoning** — extended thinking / chain-of-thought tokens`);
   out.push(``);

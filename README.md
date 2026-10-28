@@ -1,17 +1,11 @@
 # ai-usage-analyzer
 
-TUI analyzer for local AI coding agent token consumption. Auto-detects
+A local web dashboard for AI coding agent token consumption. Auto-detects
 **Claude Code**, **Codex**, **OpenCode**, **MimoCode**, **GitHub Copilot**,
-**Antigravity**, and **Gemini CLI** data directories — no hardcoded paths.
+**Antigravity**, and **Gemini CLI** data directories.
 
-```
-╭──────────────────────────────────────────────────────╮
-│               ◆  AI TOKEN ANALYZER  ◆                │
-│                                                      │
-│  411 sessions  •  1.56B total tokens  •  $29.40 USD  │
-│            range: 2026-04-01  →  2026-06-27          │
-╰──────────────────────────────────────────────────────╯
-```
+The default command starts a local server and opens the dashboard in your browser.
+Usage data stays on your device. Press Ctrl+C in the terminal to stop the server.
 
 ## Install
 
@@ -31,18 +25,19 @@ The short alias `ai-usage` is also installed and works identically.
 ## Usage
 
 ```bash
-ai-usage-analyzer                  # default TUI
-ai-usage-analyzer --top 10         # show top 10 heaviest sessions
+ai-usage-analyzer                  # open the dashboard
+ai-usage-analyzer --static --top 10 # terminal report with top 10 sessions
 ai-usage-analyzer --json           # machine-readable JSON
 ai-usage-analyzer --md > report.md # save as markdown
+ai-usage-analyzer --json --quota    # include a live quota snapshot
 ```
 
 ## Supported tools
 
 | Tool | Default path | Tokens |
 |---|---|---|
-| Claude Code    | `~/.claude/projects`                | presence only |
-| Codex          | `~/.codex/sessions/YYYY/MM/DD/`    | yes |
+| Claude Code    | `~/.claude/projects`                | yes (estimated cost) |
+| Codex          | `~/.codex/sessions/` and `archived_sessions/` | yes (estimated cost) |
 | OpenCode       | `~/.local/share/opencode/opencode.db` | yes (+cost) |
 | MimoCode       | `~/.local/share/mimocode/mimocode.db` | yes (+cost) |
 | GitHub Copilot | `~/.copilot/session-state/`        | presence only |
@@ -65,14 +60,34 @@ For tools that record token data, the analyzer shows input, output, cache
 read, cache write, and reasoning tokens. Cache hits are cheap; reasoning is
 the extended-thinking/chain-of-thought cost.
 
+## Quotas
+
+Reports stay offline unless `--quota` is supplied. This requests Claude and Codex
+usage limits using your existing logins. Vendor endpoints are internal and can
+change. Codex credentials may be refreshed and written back to `auth.json`.
+
+## Costs
+
+Claude and Codex costs use bundled API rates per model and are estimates,
+not subscription charges or invoices. `~` marks an estimate, `*` marks a
+partial total, and `n/a` means unavailable. Unknown models are listed rather
+than assigned a fallback price. OpenCode and MimoCode costs are read from
+their local databases. Pricing uses standard public API rates and the
+five-minute Claude cache-write rate; regional, batch, and other modifiers may
+differ. Rates are versioned with the app and can become outdated.
+
 ## How it works
 
 ```
 src/
 ├── detectors.js   auto-path discovery (env → well-known locations)
 ├── loaders.js     SQLite + JSONL parsers → unified session record
+├── quota.js       Claude and Codex quota snapshots
+├── pricing.js     bundled model pricing and estimates
+├── live.js        incremental live usage monitor
 ├── aggregate.js   per-project / per-week / per-month grouping
-├── render.js      TUI  •  markdown.js  →  Markdown report
+├── server.js      local dashboard server
+├── render.js      static terminal report  •  markdown.js  →  Markdown report
 bin/
 └── ai-usage.js    entry point
 ```

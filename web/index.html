@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Usage overview · AI Usage Analyzer</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="/fonts/manrope.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/gsap.js" defer></script>
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="masthead">
+    <a class="brand" href="#overview"><img src="/favicon.svg" width="28" height="28" alt=""><span>Usage<b>Analyzer</b></span></a>
+    <nav class="views" aria-label="Dashboard views">
+      <a href="#overview" aria-current="page">Overview</a>
+      <a href="#sessions">Sessions</a>
+      <a href="#sources">Sources <span id="source-count" class="count"></span></a>
+    </nav>
+    <div class="masthead-actions">
+      <button id="theme" class="button quiet" type="button" aria-pressed="false">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path class="fill" d="M10 3.5a6.5 6.5 0 0 0 0 13z"/></svg>
+        <span>Dark</span>
+      </button>
+      <button id="refresh" class="button solid" type="button">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16.5 8a6.7 6.7 0 1 0-.4 5M16.5 3.5V8H12"/></svg>
+        <span id="refresh-label">Refresh records</span>
+      </button>
+    </div>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <div id="message" class="notice" role="status" aria-live="polite"></div>
+    <section id="loading" class="loading" aria-labelledby="loading-title">
+      <h1 id="loading-title">Reading your session files</h1>
+      <p>Scanning the local folders of each coding tool. Nothing leaves this device.</p>
+      <div class="progress" aria-hidden="true"><span></span></div>
+    </section>
+
+    <div id="dashboard" hidden>
+      <div id="filters" class="filters">
+        <div class="filter-group" role="group" aria-label="Period">
+          <button type="button" data-period="today" aria-pressed="false">Today</button>
+          <button type="button" data-period="week" aria-pressed="false">This week</button>
+          <button type="button" data-period="30" aria-pressed="false">30 days</button>
+          <button type="button" data-period="90" aria-pressed="false">90 days</button>
+          <button type="button" data-period="year" aria-pressed="false">This year</button>
+          <button type="button" data-period="all" aria-pressed="true">All time</button>
+          <button type="button" data-period="custom" aria-pressed="false" hidden>Custom range</button>
+        </div>
+        <div id="tool-filter" class="filter-group tool-filter" role="group" aria-label="Tool"></div>
+        <p id="scope" class="scope"></p>
+      </div>
+
+      <div id="overview-view">
+        <section class="hero" aria-labelledby="view-title">
+          <div class="hero-main">
+            <h1 id="view-title"><span>Usage overview</span><span id="range-label" class="range-label"></span></h1>
+            <p class="hero-number" id="total" aria-hidden="true"><span id="total-value">0</span><span id="total-unit" class="unit"></span></p>
+            <p id="total-detail" class="hero-detail"></p>
+            <p id="insight" class="insight"></p>
+          </div>
+          <dl class="slip">
+            <div><dt>Sessions</dt><dd id="session-count"></dd></div>
+            <div><dt>Projects</dt><dd id="project-count"></dd></div>
+            <div><dt>Average session</dt><dd id="average"></dd></div>
+            <div><dt>Busiest day</dt><dd id="busiest-day"></dd></div>
+            <div class="slip-cost"><dt>API cost</dt><dd id="cost"></dd><p id="cost-detail"></p></div>
+          </dl>
+        </section>
+
+        <section class="composition" aria-labelledby="composition-title">
+          <div class="section-head">
+            <h2 id="composition-title">What the tokens are made of</h2>
+            <p>Categories follow each tool’s local records. Reasoning may also be counted in output.</p>
+          </div>
+          <div id="breakdown-bar" class="split" role="img" aria-labelledby="composition-title"></div>
+          <ul id="breakdown" class="parts"></ul>
+        </section>
+
+        <section class="band" aria-labelledby="tape-title">
+          <div class="band-label">
+            <p class="index" aria-hidden="true">01</p>
+            <h2 id="tape-title">Daily tape</h2>
+            <p>One tick per day, taller for heavier days. Drag across the tape to choose a range.</p>
+          </div>
+          <div class="band-body">
+            <div class="tape-top">
+              <p id="tape-readout" class="tape-readout"></p>
+              <button id="tape-reset" class="text-button" type="button" hidden>Show all time</button>
+            </div>
+            <div id="tape" class="tape"></div>
+            <p id="tape-live" class="sr-only" aria-live="polite"></p>
+            <details class="data-table">
+              <summary>Read the tape as monthly values</summary>
+              <div id="monthly-values"></div>
+            </details>
+          </div>
+        </section>
+
+        <section class="band" aria-labelledby="tools-title">
+          <div class="band-label">
+            <p class="index" aria-hidden="true">02</p>
+            <h2 id="tools-title">By tool</h2>
+            <p>Select a tool to filter the whole page. Only tools with token records are listed.</p>
+          </div>
+          <div class="band-body split-body">
+            <div id="tools" class="tools"></div>
+            <div class="weekday">
+              <h3>Weekday shape</h3>
+              <div id="weekday" class="weekday-bars"></div>
+              <p id="weekday-note" class="note"></p>
+            </div>
+          </div>
+        </section>
+
+        <section class="band" aria-labelledby="projects-title">
+          <div class="band-label">
+            <p class="index" aria-hidden="true">03</p>
+            <h2 id="projects-title">By project</h2>
+            <p>Bar length compares projects. Its texture shows which tools did the work. Select a project to inspect its sessions.</p>
+          </div>
+          <div class="band-body">
+            <div id="projects" class="projects"></div>
+            <ul id="projects-legend" class="legend" aria-label="Texture key"></ul>
+            <button id="projects-more" class="text-button" type="button" hidden></button>
+          </div>
+        </section>
+
+        <section class="band" aria-labelledby="heaviest-title">
+          <div class="band-label">
+            <p class="index" aria-hidden="true">04</p>
+            <h2 id="heaviest-title">Heaviest sessions</h2>
+            <p>The five single sessions that used the most tokens in this selection.</p>
+          </div>
+          <div class="band-body">
+            <ol id="heaviest" class="heaviest"></ol>
+            <a class="text-link" href="#sessions">Browse all sessions</a>
+          </div>
+        </section>
+      </div>
+
+      <div id="sessions-view" hidden>
+        <section class="page-head" aria-labelledby="sessions-title">
+          <h1 id="sessions-title">Sessions</h1>
+          <p>Every recorded session in the current selection. Open one to see its token categories.</p>
+        </section>
+        <div class="toolbar">
+          <label class="search"><span>Search sessions</span><input id="search" type="search" placeholder="Title, project, model or tool" autocomplete="off"></label>
+          <div class="filter-group" role="group" aria-label="Sort sessions">
+            <button type="button" data-sort="tokens" aria-pressed="true">Most tokens</button>
+            <button type="button" data-sort="newest" aria-pressed="false">Newest first</button>
+          </div>
+        </div>
+        <p id="project-filter" class="chip-row" hidden>Project <strong id="selected-project"></strong><button id="clear-project" class="text-button" type="button">Clear project filter</button></p>
+        <div id="session-list" class="session-list"></div>
+        <nav class="pager" aria-label="Session pages">
+          <p id="session-range"></p>
+          <div><button id="previous" class="button quiet" type="button">Previous page</button><button id="next" class="button quiet" type="button">Next page</button></div>
+        </nav>
+      </div>
+
+      <div id="sources-view" hidden>
+        <section class="page-head" aria-labelledby="sources-title">
+          <h1 id="sources-title">Sources</h1>
+          <p>The local folders this analyzer can read. A detected folder does not mean the tool stores token counts.</p>
+        </section>
+        <div id="sources" class="sources"></div>
+        <section id="read-errors" class="issues" hidden aria-labelledby="issues-title">
+          <h2 id="issues-title">Read issues</h2>
+          <p>Some records may be missing from the totals. Check the paths above, then refresh.</p>
+          <ul id="error-list"></ul>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <footer class="colophon">
+    <p>Local usage records. Costs are API-rate estimates, not subscription charges.</p>
+    <p id="updated"></p>
+  </footer>
+
+  <dialog id="session-dialog" class="drawer" aria-labelledby="session-title">
+    <div class="drawer-body">
+      <div class="drawer-top">
+        <p id="session-tool" class="drawer-tool"></p>
+        <button id="close-dialog" class="button quiet" type="button">Close</button>
+      </div>
+      <h2 id="session-title"></h2>
+      <p id="session-total" class="drawer-number"></p>
+      <div id="session-split" class="split" role="img" aria-label="Token categories for this session"></div>
+      <dl id="session-details" class="details"></dl>
+    </div>
+  </dialog>
+</body>
+</html>

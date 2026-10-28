@@ -34,6 +34,11 @@ export function groupBy(records, keyFn) {
 }
 
 function summarize(records) {
+  const statuses = records.map(r => r.costStatus || 'recorded');
+  const incomplete = statuses.some(status => status === 'partial' || status === 'unavailable');
+  const known = statuses.some(status => status !== 'unavailable');
+  const costStatus = !statuses.length ? 'unavailable' : incomplete ? (known ? 'partial' : 'unavailable') : statuses.includes('estimated') ? 'estimated' : 'recorded';
+  const unknownModels = [...new Set(records.flatMap(r => r.unknownModels || []))];
   return {
     n: records.length,
     tokensTotal: sum(records, "tokensTotal"),
@@ -43,6 +48,8 @@ function summarize(records) {
     tokensCacheWrite: sum(records, "tokensCacheWrite"),
     tokensReasoning: sum(records, "tokensReasoning"),
     cost: sum(records, "cost"),
+    costStatus,
+    unknownModels,
     avg: avg(records, "tokensTotal"),
   };
 }

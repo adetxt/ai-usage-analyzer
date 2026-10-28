@@ -18,7 +18,8 @@ import {
     renderPerWeek,
     renderTopSessions,
 } from "../src/render.js";
-import { runInteractive } from "../src/tui.js";
+import { startDashboard } from "../src/server.js";
+import { collectQuotas, renderQuota } from "../src/quota.js";
 
 const args = process.argv.slice(2);
 const hasFlag = (name) =>
@@ -26,6 +27,7 @@ const hasFlag = (name) =>
 const showHelp = hasFlag("help") || hasFlag("h");
 const jsonOut = hasFlag("json");
 const mdOut = hasFlag("markdown") || hasFlag("md");
+const quotaOut = hasFlag("quota");
 const staticOut = hasFlag("static") || hasFlag("no-interactive");
 const topN = (() => {
   const i = args.indexOf("--top");
@@ -42,7 +44,7 @@ const yearFilter = (() => {
 
 if (showHelp) {
   console.log(`
-ai-usage-analyzer — local AI coding agent token consumption TUI
+ai-usage-analyzer — local AI coding agent usage dashboard
 
 Usage:
   ai-usage [options]
@@ -52,15 +54,16 @@ Options:
   --json                   Output machine-readable JSON instead of TUI
   --markdown, --md         Output as a Markdown report (GitHub-flavored tables)
   --static, --no-interactive  Disable interactive mode; dump all sections at once
-  --top N                  Show top N heaviest sessions (default: 5)
-  --year YYYY              Filter records to a single year (e.g. --year 2026)
+  --quota                  Include live quota in JSON, Markdown, or static reports
+  --top N                  Show top N sessions in reports (default: 5)
+  --year YYYY              Filter reports to a single year (e.g. --year 2026)
 
 Examples:
-  ai-usage                       # default TUI
-  ai-usage --year 2026           # TUI, only 2026 sessions
+  ai-usage                       # open dashboard
+  ai-usage --static --year 2026  # report, only 2026 sessions
   ai-usage --json | jq .summary  # pipe to jq
   ai-usage --md > report.md      # save as markdown
-  ai-usage --top 20              # show top 20 sessions
+  ai-usage --static --top 20     # show top 20 sessions
 
 Environment overrides (per-tool data path):
   CLAUDE_HOME, CODEX_HOME, OPENCODE_HOME, MIMOCODE_HOME,
@@ -85,6 +88,10 @@ if (jsonOut && mdOut) {
 }
 
 async function main() {
+  if (!jsonOut && !mdOut && !staticOut) {
+    await startDashboard();
+    return;
+  }
   const t0 = Date.now();
   const detections = detectAll();
   const { records: allRecords, errors } = await loadAll(detections);
@@ -101,9 +108,13 @@ async function main() {
   const range = dateRange(records);
   const tot = overall(records);
 
+  const quotaPromise = quotaOut ? collectQuotas() : null;
+
   if (jsonOut) {
+    const quotas = quotaPromise ? await quotaPromise : null;
     const out = {
       detections,
+      ...(quotas ? { quotas } : {}),
       summary: tot,
       dateRange: range,
       sessions: records,
@@ -125,14 +136,9 @@ async function main() {
       topN,
       generatedAt: new Date().toISOString(),
     });
-    process.stdout.write(out);
+    const quota = quotaPromise ? await quotaPromise : null;
+    process.stdout.write(out + (quota ? `\n## Quotas\n\n\`\`\`\n${renderQuota(quota)}\n\`\`\`\n` : ""));
     return;
-  }
-
-  // Interactive TUI (default when stdout is a TTY and --static not given)
-  if (!staticOut) {
-    const handled = await runInteractive({ records, detections, errors, topN });
-    if (handled) return;
   }
 
   // Static fallback (--static, --no-interactive, or piped output)
@@ -141,6 +147,7 @@ async function main() {
       totalSessions: records.length,
       totalTokens: tot.tokensTotal,
       totalCost: tot.cost,
+      costStatus: tot.costStatus,
       dateRange: range,
     }),
     renderDetections(detections),
@@ -157,6 +164,7 @@ async function main() {
     );
   }
   sections.push(renderNotes(detections, errors));
+  if (quotaPromise) sections.push(renderQuota(await quotaPromise));
 
   console.log(sections.join("\n\n"));
 }

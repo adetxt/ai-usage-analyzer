@@ -54,7 +54,7 @@ test('aggregate functions return sane shapes on empty input', () => {
   assert.deepEqual(overall([]), {
     n: 0, tokensTotal: 0, tokensInput: 0, tokensOutput: 0,
     tokensCacheRead: 0, tokensCacheWrite: 0, tokensReasoning: 0,
-    cost: 0, avg: 0,
+    cost: 0, costStatus: 'unavailable', unknownModels: [], avg: 0,
   });
 });
 

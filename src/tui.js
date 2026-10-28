@@ -5,6 +5,7 @@ import chalk from "chalk";
 import process from "node:process";
 import readline from "node:readline";
 import { perProject } from "./aggregate.js";
+import { renderQuota } from "./quota.js";
 import {
     CURSOR_MARK,
     renderDetections,
@@ -25,11 +26,14 @@ function visLen(s) {
   return s.replace(ANSI_RE, "").length;
 }
 
-export async function runInteractive({ records, detections, errors, topN }) {
+export async function runInteractive({ records, detections, errors, topN, quotaPromise, quotaController, liveTailer }) {
   if (!process.stdout.isTTY || !process.stdin.isTTY) return false;
 
   const PROJECTS_VIEW = 1; // index into VIEWS
 
+  let liveRate = liveTailer ? liveTailer.tick() : null;
+  let quotas = null;
+  let active = true;
   const VIEWS = [
     {
       key: "1",
@@ -53,6 +57,7 @@ export async function runInteractive({ records, detections, errors, topN }) {
     },
     { key: "8", label: "Detections", fn: () => renderDetections(detections) },
     { key: "9", label: "Notes", fn: () => renderNotes(detections, errors) },
+    { key: "0", label: "Quota", fn: () => renderQuota(quotas) },
   ];
 
   // Project drill-down state (only active when current === PROJECTS_VIEW).
@@ -128,6 +133,7 @@ export async function runInteractive({ records, detections, errors, topN }) {
         "  ←/→ h/l switch  ↑/↓ j/k scroll  PgUp/PgDn  g/G top/bot  q quit",
       );
     }
+    if (liveRate !== null) hint = chalk.dim(` ${Math.round(liveRate)} tokens/min (10m) `) + hint;
     const gap = Math.max(1, w - visLen(hint) - visLen(pct));
     return chalk.bgBlack(hint + " ".repeat(gap) + pct);
   }
@@ -195,20 +201,29 @@ export async function runInteractive({ records, detections, errors, topN }) {
   process.stdout.write("\x1b[?1049h\x1b[?25l");
   draw(true);
 
-  process.stdout.on("resize", () => {
-    draw(true);
+  const liveTimer = liveTailer ? setInterval(() => { liveRate = liveTailer.tick(); if (active) draw(false); }, 5000) : null;
+  const onResize = () => draw(true);
+  process.stdout.on("resize", onResize);
+  if (quotaPromise) quotaPromise.then((result) => {
+    quotas = result;
+    if (active && current === 9) { loadView(); draw(false); }
   });
 
   return new Promise((resolve) => {
     function quit() {
       // Leave alternate screen — original terminal content is restored automatically.
+      active = false;
+      if (liveTimer) clearInterval(liveTimer);
+      quotaController?.abort();
+      process.stdout.removeListener("resize", onResize);
+      process.stdin.removeListener("keypress", onKeypress);
       process.stdout.write("\x1b[?25h\x1b[?1049l");
       process.stdin.setRawMode(false);
       process.stdin.pause();
-      resolve();
+      resolve(true);
     }
 
-    process.stdin.on("keypress", (_str, key) => {
+    function onKeypress(_str, key) {
       if (!key) return;
       const usable = usableRows();
       const maxScroll = Math.max(0, lines.length - usable);
@@ -270,8 +285,8 @@ export async function runInteractive({ records, detections, errors, topN }) {
           draw(false);
           return;
         }
-        if (_str && /^[1-9]$/.test(_str)) {
-          const idx = parseInt(_str, 10) - 1;
+        if (_str && /^[0-9]$/.test(_str)) {
+          const idx = _str === "0" ? 9 : parseInt(_str, 10) - 1;
           if (idx < VIEWS.length) {
             current = idx;
             if (current === PROJECTS_VIEW) proj.mode = "list";
@@ -305,6 +320,7 @@ export async function runInteractive({ records, detections, errors, topN }) {
       }
 
       if (moved) draw(false);
-    });
+    }
+    process.stdin.on("keypress", onKeypress);
   });
 }

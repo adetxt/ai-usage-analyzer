@@ -72,9 +72,10 @@ export function fmtCompact(n) {
   return String(n);
 }
 
-export function fmtCost(n) {
+export function fmtCost(n, status) {
+  if (status === "unavailable") return "n/a";
   if (!n) return "—";
-  return "$" + Number(n).toFixed(2);
+  return (status === "estimated" || status === "partial" ? "~" : "") + "$" + Number(n).toFixed(2) + (status === "partial" ? "*" : "");
 }
 function fmtDuration(ms) {
   if (!ms || ms <= 0) return chalk.dim("—");
@@ -175,6 +176,7 @@ export function renderHeader({
   totalSessions,
   totalTokens,
   totalCost,
+  costStatus,
   dateRange,
 }) {
   const title = gradient.pastel.multiline("◆  AI TOKEN ANALYZER  ◆");
@@ -183,7 +185,7 @@ export function renderHeader({
     "  •  " +
     chalk.bold.cyan(`${fmtCompact(totalTokens)} total tokens`) +
     (totalCost
-      ? "  •  " + chalk.bold.yellow(`$${totalCost.toFixed(2)} USD`)
+      ? "  •  " + chalk.bold.yellow(`${fmtCost(totalCost, costStatus)} USD`)
       : "");
   const range =
     dateRange[0] && dateRange[1]
@@ -338,7 +340,7 @@ export function renderOverview(records, detections) {
       fmtInt(p.n),
       fmtCompact(p.tokensTotal),
       fmtCompact(p.avg),
-      fmtCost(p.cost),
+      fmtCost(p.cost, p.costStatus),
     ]);
   }
   pt.push([
@@ -346,7 +348,7 @@ export function renderOverview(records, detections) {
     chalk.bold(fmtInt(records.length)),
     chalk.bold(fmtCompact(t.tokensTotal)),
     chalk.bold(fmtCompact(t.avg)),
-    chalk.bold(fmtCost(t.cost)),
+    chalk.bold(fmtCost(t.cost, t.costStatus)),
   ]);
 
   const body =
@@ -354,7 +356,9 @@ export function renderOverview(records, detections) {
     "\n\n" +
     chalk.bold.underline("Token Breakdown") +
     "\n" +
-    bt.toString();
+    bt.toString() +
+    "\n\n" + chalk.dim("~ estimated API cost; * partial; n/a unavailable") +
+    (t.unknownModels.length ? "\n" + chalk.dim(`Unpriced models: ${t.unknownModels.map(m => String(m).replace(/[\x00-\x1f\x7f-\x9f]/g, "")).join(", ")}`) : "");
   return boxen(body, {
     title: chalk.bold("Overview"),
     borderStyle: "round",
@@ -526,7 +530,7 @@ export function renderProjectSessions(records, projectName) {
         colorize(r.tool, toolColor(r.tool)),
         dur,
         fmtCompact(r.tokensTotal),
-        r.cost ? "$" + r.cost.toFixed(4) : "—",
+        fmtCost(r.cost, r.costStatus),
         titleStr,
       ]);
     } else {
@@ -539,7 +543,7 @@ export function renderProjectSessions(records, projectName) {
         fmtCompact(r.tokensInput),
         fmtCompact(r.tokensOutput),
         fmtCompact(cache),
-        r.cost ? "$" + r.cost.toFixed(4) : "—",
+        fmtCost(r.cost, r.costStatus),
         titleStr,
       ]);
     }
@@ -600,7 +604,7 @@ export function renderPerTool(records) {
     }
     row.push(
       fmtCompact(p.tokensTotal),
-      fmtCost(p.cost),
+      fmtCost(p.cost, p.costStatus),
       fmtCompact(p.avg),
       bar(p.tokensTotal, max, barW),
     );
@@ -796,7 +800,7 @@ export function renderTopSessions(records, n = 5) {
         chalk.bold(String(i + 1)),
         chalk.bold.yellow(fmtCompact(r.tokensTotal)),
         `${fmtCompact(r.tokensInput)}/${fmtCompact(r.tokensOutput)}`,
-        r.cost ? "$" + r.cost.toFixed(4) : "—",
+        fmtCost(r.cost, r.costStatus),
         truncEnd(r.title, 30) || "—",
       ]);
     });
@@ -830,7 +834,7 @@ export function renderTopSessions(records, n = 5) {
       chalk.bold.yellow(fmtCompact(r.tokensTotal)),
       fmtCompact(r.tokensInput),
       fmtCompact(r.tokensOutput),
-      r.cost ? "$" + r.cost.toFixed(4) : "—",
+      fmtCost(r.cost, r.costStatus),
       shortModel(r.model),
       truncEnd(r.project, 30),
       truncEnd(r.title, 40) || "—",
@@ -850,6 +854,7 @@ export function renderTopSessions(records, n = 5) {
 
 export function renderNotes(detections, errors) {
   const lines = [];
+  lines.push(chalk.dim("Costs: ~ estimated API rates; * partial, excludes unpriced models; n/a unavailable."));
   lines.push(chalk.bold.underline("Token definitions"));
   lines.push(
     `  • ${chalk.cyan("Input")}        — prompt tokens (what was sent to the model)`,
@@ -861,7 +866,7 @@ export function renderNotes(detections, errors) {
     `  • ${chalk.cyan("Cache Read")}   — prompt tokens served from provider cache (cheap)`,
   );
   lines.push(
-    `  • ${chalk.cyan("Cache Write")}  — prompt tokens cached for future use (OpenCode only)`,
+    `  • ${chalk.cyan("Cache Write")}  — prompt tokens cached for future use`,
   );
   lines.push(
     `  • ${chalk.yellow("Reasoning")}    — extended thinking / chain-of-thought tokens`,

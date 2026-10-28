@@ -1,5 +1,26 @@
 # AGENTS.md
 
+## Agent workflow tools
+
+These are agent tools, not application dependencies. Keep them out of `package.json` and `pnpm-lock.yaml`. Repository constraints take precedence over their defaults, including the rules about comments, dependencies, and testing.
+
+- **[RTK](https://github.com/rtk-ai/rtk)** compresses shell output. Read [RTK.md](RTK.md) at session start. Prefer supported commands such as `rtk git status`, `rtk git diff`, `rtk rg`, and `rtk test npm test`. Codex needs explicit prefixes with the installed integration; Claude Code already has a global rewrite hook. Avoid double wrapping. Use `rtk proxy <command>` for exact output needed by parsers or diagnostics; unsupported commands can run directly. Inspect savings with `rtk gain`.
+- **[Caveman](https://github.com/JuliusBrussee/caveman)** keeps chat concise. Load `~/.agents/skills/caveman/SKILL.md` (or the host's installed copy) and use **lite** by default here. Preserve technical meaning, commands, paths, and errors. Write documentation, code, and commit messages in normal prose. `$caveman` changes the mode in Codex; `stop caveman` restores normal replies.
+- **[Ponytail](https://github.com/DietrichGebert/ponytail)** guides implementation. Load `~/.codex/skills/ponytail/SKILL.md` (or the host's installed copy); use **full** by default. Trace affected behavior before editing, reuse existing code and native features, and make the smallest complete change. Preserve validation, error handling, security, accessibility, and necessary tests. Use the installed `ponytail-review`, `ponytail-audit`, `ponytail-debt`, `ponytail-gain`, and `ponytail-help` skills when their workflows are requested. The repository's no-comments rule also applies to Ponytail's suggested `shortcut:` comments.
+- **[Anti Slop](https://github.com/miqdadbadjuber/anti-slop)** filters generic output. Load `~/.agents/skills/antislop/SKILL.md` (or the host's installed copy) every session. Use **during** for implementation and **after** for requested audits. Load the matching companion skill as needed: `antislop-ui` for visual work, `antislop-copywriting` for prose, `antislop-human` for accessibility, `antislop-layoutmobile` for responsive layouts, and `antislop-code` for comment cleanup. Preserve the project's visual direction and ground claims in evidence.
+
+Check for existing binaries and skills before installing. On a new macOS machine, install missing pieces with:
+
+```sh
+brew install rtk
+rtk init --codex
+npx skills add JuliusBrussee/caveman -g
+npx skills add DietrichGebert/ponytail -g --agent codex --skill '*'
+npx skills add miqdadbadjuber/anti-slop -g --agent codex --skill '*'
+```
+
+Skills installed through the Skills CLI normally live under `~/.agents/skills`; Codex-specific installs may live under `~/.codex/skills`. Load the existing copy rather than duplicating it. Newly installed skills are available on the next turn; start a new thread if the host does not refresh them.
+
 ## Commands
 
 - `pnpm install` — install deps (uses pnpm, pinned via `packageManager` field)
@@ -56,3 +77,5 @@ src/render.js      TUI       src/markdown.js  →  Markdown
 - Tag format: `vX.Y.Z`, push the tag — `.github/workflows/publish.yml` runs tests and publishes via npm OIDC trusted publishing (no `NPM_TOKEN` secret needed).
 - One-time npm-side setup (already done for `ai-usage-analyzer`): add this workflow as a trusted publisher at https://www.npmjs.com/package/ai-usage-analyzer/access (GitHub repo, workflow file `publish.yml`, environment left blank).
 - No changelog file.
+
+@RTK.md
