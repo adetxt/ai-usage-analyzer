@@ -8,7 +8,7 @@
 // data, also wire a loader branch in src/loaders.js.
 
 import { statSync, readdirSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { homedir, platform } from 'node:os';
 import { env } from 'node:process';
 import { createRequire } from 'node:module';
@@ -112,10 +112,10 @@ export const TOOLS = [
     barChar: '▓',
     kind: 'jsonl-rollout',
     envVar: 'CODEX_HOME',
-    candidatePaths: () => [
-      env.CODEX_HOME || join(HOME, '.codex', 'sessions'),
-    ],
-    count: countJsonlRecursive,
+    candidatePaths: () => env.CODEX_HOME
+      ? [env.CODEX_HOME]
+      : [join(HOME, '.codex', 'sessions'), join(HOME, '.codex', 'archived_sessions')],
+    count: path => countJsonlRecursive(path) + (basename(path) === 'sessions' ? countJsonlRecursive(join(dirname(path), 'archived_sessions')) : 0),
     hasTokens: true,
     description: '~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl',
   },

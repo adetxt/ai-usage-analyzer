@@ -16,9 +16,10 @@
 //   }
 
 import { createReadStream, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { DatabaseSync } from "node:sqlite";
+import { estimateUsage } from "./pricing.js";
 
 // Run fn over every item in items with at most `limit` in-flight at once.
 async function mapConcurrent(items, fn, limit) {
@@ -68,6 +69,11 @@ function parseIsoMs(s) {
   if (!s) return null;
   const t = Date.parse(s);
   return Number.isFinite(t) ? t : null;
+}
+
+function tokenCount(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
 function compactHome(p) {
@@ -144,6 +150,7 @@ function loadOpencodeStyleSqlite(dbPath, toolKey) {
       tokensReasoning: r.tokens_reasoning || 0,
       tokensTotal: tot,
       cost: r.cost || 0,
+      costStatus: r.cost == null ? "unavailable" : "recorded",
       model: r.model || "",
     });
   }
@@ -156,7 +163,9 @@ function loadOpencodeStyleSqlite(dbPath, toolKey) {
 
 async function loadCodexRollouts(rootDir) {
   const errors = [];
-  const files = walkJsonl(rootDir, "rollout-");
+  const roots = basename(rootDir) === "sessions" ? [rootDir, join(dirname(rootDir), "archived_sessions")] : [rootDir];
+  const files = [...new Set(roots.flatMap((root) => walkJsonl(root, "rollout-")))];
+  files.sort((a, b) => Number(a.split(/[\\/]/).includes("archived_sessions")) - Number(b.split(/[\\/]/).includes("archived_sessions")) || a.localeCompare(b));
   const results = await mapConcurrent(
     files,
     async (f) => {
@@ -169,15 +178,20 @@ async function loadCodexRollouts(rootDir) {
     },
     48,
   );
-  return { records: results.filter(Boolean), errors };
+  const sessions = new Map();
+  for (const record of results) if (record && !sessions.has(record.sessionId)) sessions.set(record.sessionId, record);
+  return { records: [...sessions.values()], errors };
 }
 
 async function parseCodexRollout(path) {
   // Use a streaming reader to avoid loading huge files into memory.
-  // The 'token_count' event accumulates usage; we take the LAST one (final snapshot).
   let sessionMeta = null;
-  let lastUsage = null;
+  let previous = null;
+  let forkWaiting = false;
+  let inheritedTotal = null;
+  const usageEvents = [];
   let lastModel = "";
+  let provider = "openai";
   let lastEvTs = null;
 
   const stream = createReadStream(path, { encoding: "utf8" });
@@ -195,31 +209,73 @@ async function parseCodexRollout(path) {
     const evTs = parseIsoMs(ev.timestamp);
     if (evTs) lastEvTs = evTs;
     if (t === "session_meta") {
-      sessionMeta = { ts: ev.timestamp, cwd: p.cwd || p.CWD || "" };
+      sessionMeta = { ts: ev.timestamp, cwd: p.cwd || p.CWD || "", id: typeof p.id === "string" ? p.id : null };
+      forkWaiting = Boolean(p.forked_from_id);
+      if (typeof p.model_provider === "string" && p.model_provider) provider = p.model_provider;
+    } else if (t === "turn_context") {
+      forkWaiting = false;
+      lastModel = p.model_info?.slug || p.model || p.model_name || lastModel;
     } else if (t === "event_msg" && p.type === "token_count") {
       const info = p.info || {};
-      const u = info.total_token_usage;
-      if (u) lastUsage = u;
-      const m = info.model || p.model;
+      const fields = ['input_tokens', 'output_tokens', 'cached_input_tokens', 'reasoning_output_tokens'];
+      const normalize = (u) => u && Object.fromEntries(fields.map((field) => [field, tokenCount(u[field] ?? (field === 'cached_input_tokens' ? u.cache_read_input_tokens : 0))]));
+      const total = normalize(info.total_token_usage);
+      const last = normalize(info.last_token_usage);
+      if (forkWaiting) {
+        if (total) {
+          previous = total;
+          inheritedTotal = info.total_token_usage.total_tokens ?? null;
+        }
+        continue;
+      }
+      if (inheritedTotal !== null && info.total_token_usage?.total_tokens === inheritedTotal) {
+        if (total) previous = total;
+        inheritedTotal = null;
+        continue;
+      }
+      inheritedTotal = null;
+      let delta = null;
+      if (total && previous) {
+        if (fields.every((field) => total[field] === previous[field])) continue;
+        const regressed = fields.some((field) => total[field] < previous[field]);
+        if (regressed) {
+          const sum = (u) => fields.reduce((n, field) => n + u[field], 0);
+          if (last && sum(total) > 0 && sum(last) > 0 && (sum(total) * 100 >= sum(previous) * 98 || sum(total) + sum(last) * 2 >= sum(previous))) continue;
+          delta = last;
+        } else {
+          delta = last || Object.fromEntries(fields.map((field) => [field, total[field] - previous[field]]));
+        }
+      } else {
+        delta = last || total;
+      }
+      if (total) previous = total;
+      else if (last && previous) previous = Object.fromEntries(fields.map((field) => [field, previous[field] + last[field]]));
+      const m = info.model || info.model_name || p.model;
       if (m) lastModel = m;
+      if (delta) usageEvents.push({ model: lastModel, provider, aggregated: !last, usage: delta });
     }
   }
-  if (!sessionMeta || !lastUsage) return null;
+  if (!sessionMeta || !usageEvents.length) return null;
 
   const ts = parseIsoMs(sessionMeta.ts);
   if (!ts) return null;
   const durationMs = lastEvTs && lastEvTs > ts ? lastEvTs - ts : 0;
 
-  const tokensInput = lastUsage.input_tokens || 0;
-  const tokensOutput = lastUsage.output_tokens || 0;
-  const tokensCacheRead = lastUsage.cached_input_tokens || 0;
-  const tokensReasoning = lastUsage.reasoning_output_tokens || 0;
+  let tokensInput = 0, tokensOutput = 0, tokensCacheRead = 0, tokensReasoning = 0;
+  for (const { usage } of usageEvents) {
+    const cached = Math.min(usage.input_tokens, usage.cached_input_tokens);
+    const reasoning = Math.min(usage.output_tokens, usage.reasoning_output_tokens);
+    tokensInput += usage.input_tokens - cached;
+    tokensOutput += usage.output_tokens - reasoning;
+    tokensCacheRead += cached;
+    tokensReasoning += reasoning;
+  }
   const tot = tokensInput + tokensOutput + tokensCacheRead + tokensReasoning;
   if (tot === 0) return null;
 
   return {
     tool: "codex",
-    sessionId: path.split("-").pop().replace(".jsonl", ""),
+    sessionId: sessionMeta.id || basename(path).match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?=\.jsonl$)/i)?.[0] || basename(path, ".jsonl"),
     project: compactHome(sessionMeta.cwd),
     title: "",
     week: isoWeekKey(ts),
@@ -232,8 +288,9 @@ async function parseCodexRollout(path) {
     tokensCacheWrite: 0, // codex doesn't expose cache_write separately
     tokensReasoning,
     tokensTotal: tot,
-    cost: 0,
+    ...estimateUsage("codex", usageEvents),
     model: lastModel,
+    usageEvents,
   };
 }
 
@@ -294,8 +351,7 @@ function walkClaudeSessions(root) {
 //
 // Each top-level file under projects/<encoded-cwd>/<UUID>.jsonl is one session.
 // Per assistant line, `message.usage` carries the per-turn token counts; we
-// dedupe by `message.id` (Claude Code emits streaming duplicates) and sum
-// across unique messages. cwd / model / timestamp come from the line itself.
+// merge streamed usage by message and request, then sum unique responses. cwd / model / timestamp come from the line itself.
 
 async function loadClaudeJsonl(rootDir) {
   const errors = [];
@@ -317,7 +373,9 @@ async function loadClaudeJsonl(rootDir) {
 
 async function parseClaudeSession(path) {
   const sessionId = path.split("/").pop().replace(".jsonl", "");
-  const seenIds = new Set();
+  const usages = new Map();
+  const usageModels = new Map();
+  let anonymous = 0;
   let cwd = "";
   let model = "";
   let firstTs = null;
@@ -347,15 +405,21 @@ async function parseClaudeSession(path) {
     const usage = msg.usage;
     if (!usage) continue;
     const id = msg.id;
-    if (id) {
-      if (seenIds.has(id)) continue;
-      seenIds.add(id);
+    const key = id ? JSON.stringify([id, ev.requestId || null]) : `anonymous:${anonymous++}`;
+    const previous = usages.get(key) || {};
+    const merged = {};
+    for (const field of ["input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"]) {
+      merged[field] = Math.max(tokenCount(previous[field]), tokenCount(usage[field]));
     }
+    usages.set(key, merged);
+    if (msg.model) usageModels.set(key, msg.model);
     if (!cwd && typeof ev.cwd === "string") cwd = ev.cwd;
     if (!model && typeof msg.model === "string") model = msg.model;
     const evTs = parseIsoMs(ev.timestamp);
     if (firstTs === null && evTs !== null) firstTs = evTs;
     if (evTs !== null) lastTs = evTs;
+  }
+  for (const usage of usages.values()) {
     tokensInput += usage.input_tokens || 0;
     tokensOutput += usage.output_tokens || 0;
     tokensCacheRead += usage.cache_read_input_tokens || 0;
@@ -367,6 +431,7 @@ async function parseClaudeSession(path) {
   const ts = firstTs ?? Date.now();
   const durationMs = firstTs !== null && lastTs !== null ? lastTs - firstTs : 0;
 
+  const usageEvents = [...usages].map(([key, usage]) => ({ model: usageModels.get(key) || "", usage }));
   return {
     tool: "claude",
     sessionId,
@@ -382,8 +447,9 @@ async function parseClaudeSession(path) {
     tokensCacheWrite,
     tokensReasoning: 0,
     tokensTotal: tot,
-    cost: 0,
+    ...estimateUsage("claude", usageEvents),
     model,
+    usageEvents,
   };
 }
 
