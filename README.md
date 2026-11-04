@@ -1,3 +1,5 @@
+fake commit
+
 # ai-usage-analyzer
 
 A local web dashboard for AI coding agent token consumption. Auto-detects
