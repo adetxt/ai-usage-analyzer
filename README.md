@@ -58,6 +58,11 @@ For tools that record token data, the analyzer shows input, output, cache
 read, cache write, and reasoning tokens. Cache hits are cheap; reasoning is
 the extended-thinking/chain-of-thought cost.
 
+Share card in the dashboard header draws a PNG of the selected range and
+tool filter in link-preview (1.91:1), 4:5, or 9:16 format: sessions, projects, active days, best streak, a daily tape, and a
+working-hours persona. Download it or copy it to the clipboard. Project names
+and paths are never drawn on it, and nothing is uploaded.
+
 Average daily tokens divides total tokens by calendar days, including days
 without usage. The dashboard uses the selected date range in your local time.
 All time uses the first through last recorded day. Terminal, Markdown, and JSON

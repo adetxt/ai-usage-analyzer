@@ -140,6 +140,9 @@ h3 { font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
 .date-fields input { width: 100%; min-width: 0; min-height: 44px; padding: 6px; border: 1px solid var(--ink); border-radius: 3px; background: var(--paper); color: var(--ink); font-size: 13px; }
 .date-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; padding: 16px; border-top: 1px solid var(--rule); }
 .date-footer p { flex-basis: 100%; margin-right: auto; color: var(--ink-2); font-size: 13px; font-weight: 600; }
+.share-dialog { width: min(820px, calc(100% - 24px)); }
+.share-body { display: grid; gap: 12px; padding: 16px; }
+.share-body canvas { display: block; width: auto; height: auto; max-width: 100%; max-height: 58dvh; margin-inline: auto; border: 1px solid var(--rule); }
 @media (max-width: 359px) {
   .date-dialog { width: calc(100% - 4px); }
   .date-calendar { padding-inline: 2px; }
