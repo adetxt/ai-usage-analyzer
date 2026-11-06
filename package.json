@@ -1,6 +1,6 @@
 {
   "name": "ai-usage-analyzer",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Local web dashboard for AI coding agent token usage.",
   "type": "module",
   "packageManager": "pnpm@10.33.0",
