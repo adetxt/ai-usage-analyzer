@@ -10,7 +10,7 @@ test('dashboard serves local assets and usage while rejecting cross-origin reque
     const page = await fetch(url);
     assert.equal(page.status, 200);
     assert.match(await page.text(), /Usage overview/);
-    for (const [path, type] of [['/app.js', 'javascript'], ['/dates.js', 'javascript'], ['/aggregate.js', 'javascript'], ['/style.css', 'css'], ['/favicon.svg', 'svg'], ['/gsap.js', 'javascript'], ['/fonts/manrope.woff2', 'font/woff2'], ['/icons/claude.svg', 'svg'], ['/icons/openai.svg', 'svg'], ['/icons/opencode.svg', 'svg']]) {
+    for (const [path, type] of [['/app.js', 'javascript'], ['/dates.js', 'javascript'], ['/card.js', 'javascript'], ['/aggregate.js', 'javascript'], ['/style.css', 'css'], ['/favicon.svg', 'svg'], ['/gsap.js', 'javascript'], ['/fonts/manrope.woff2', 'font/woff2'], ['/icons/claude.svg', 'svg'], ['/icons/openai.svg', 'svg'], ['/icons/opencode.svg', 'svg']]) {
       const asset = await fetch(`${url}${path}`);
       assert.equal(asset.status, 200);
       assert.match(asset.headers.get('content-type'), new RegExp(type));

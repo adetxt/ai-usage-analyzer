@@ -1,4 +1,5 @@
 import { overall, perProject, perTool, perMonth, topSessions } from '/aggregate.js';
+import { CARD_FORMATS, cardStats, cardSummary, drawCard, cardBlob } from '/card.js';
 import { dayNumber, periodBounds as boundsForPeriod, dateValue, parseDate, calendarDays } from '/dates.js';
 
 const $ = id => document.getElementById(id);
@@ -924,6 +925,7 @@ async function load() {
     buildToolFilter();
     $('loading').hidden = true;
     $('dashboard').hidden = false;
+    $('share').disabled = false;
     setMessage('');
     if (data.errors?.length) setMessage(`${data.errors.length} read ${data.errors.length === 1 ? 'issue needs' : 'issues need'} attention. Totals may be incomplete.`, { link: ['View read issues', '#sources'] });
     $('updated').textContent = `Read at ${new Date(data.generatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
@@ -965,6 +967,55 @@ for (const button of document.querySelectorAll('[data-period]')) {
     renderDatePicker();
   });
 }
+let cardFormat = CARD_FORMATS[0];
+async function paintShareCard() {
+  const canvas = $('share-canvas');
+  const stats = cardStats(selectedRecords());
+  const rangeLabel = state.period.key === 'all' ? 'All time' : periodLabel(state.period);
+  const toolLabel = state.tool === 'all' ? '' : toolName(state.tool);
+  canvas.setAttribute('aria-label', cardSummary(stats, [rangeLabel, toolLabel].filter(Boolean).join(', ')));
+  for (const button of $('share-format').children) button.setAttribute('aria-pressed', String(button.dataset.format === cardFormat.key));
+  await drawCard(canvas, stats, { format: cardFormat, rangeLabel, toolLabel, toolName });
+}
+async function openShareCard() {
+  $('share-status').textContent = '';
+  $('share-dialog').showModal();
+  await paintShareCard();
+}
+for (const format of CARD_FORMATS) {
+  const button = el('button', '', `${format.label} ${format.ratio}`);
+  button.type = 'button';
+  button.dataset.format = format.key;
+  $('share-format').append(button);
+}
+$('share-format').addEventListener('click', event => {
+  const key = event.target.closest('button')?.dataset.format;
+  if (!key) return;
+  cardFormat = CARD_FORMATS.find(format => format.key === key);
+  $('share-status').textContent = '';
+  paintShareCard();
+});
+async function shareAction(task, done) {
+  try {
+    await task(await cardBlob($('share-canvas')));
+    $('share-status').textContent = done;
+  } catch (error) {
+    $('share-status').textContent = error.name === 'AbortError' ? '' : 'Could not do that in this browser. Download the PNG instead.';
+  }
+}
+$('share').addEventListener('click', openShareCard);
+$('close-share').addEventListener('click', () => $('share-dialog').close());
+$('share-dialog').addEventListener('click', event => {
+  if (event.target === event.currentTarget) event.currentTarget.close();
+});
+$('download-card').addEventListener('click', () => shareAction(blob => {
+  const link = el('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `ai-usage-card-${cardFormat.ratio.replace(':', 'x')}.png`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}, 'Saved.'));
+$('copy-card').addEventListener('click', () => shareAction(blob => navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]), 'Copied. Paste it into your post.'));
 $('date-filter').addEventListener('click', openDatePicker);
 for (const id of ['close-date', 'cancel-date']) $(id).addEventListener('click', () => $('date-dialog').close());
 $('date-dialog').addEventListener('close', () => $('date-filter').setAttribute('aria-expanded', 'false'));

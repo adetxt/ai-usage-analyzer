@@ -8,6 +8,7 @@ const assets = new Map([
   ['/', ['../web/index.html', 'text/html; charset=utf-8']],
   ['/app.js', ['../web/app.js', 'text/javascript; charset=utf-8']],
   ['/dates.js', ['../web/dates.js', 'text/javascript; charset=utf-8']],
+  ['/card.js', ['../web/card.js', 'text/javascript; charset=utf-8']],
   ['/aggregate.js', ['./aggregate.js', 'text/javascript; charset=utf-8']],
   ['/style.css', ['../web/style.css', 'text/css; charset=utf-8']],
   ['/favicon.svg', ['../web/favicon.svg', 'image/svg+xml']],
