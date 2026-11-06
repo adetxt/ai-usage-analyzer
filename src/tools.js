@@ -142,50 +142,6 @@ export const TOOLS = [
   },
 
   // -----------------------------------------------------------------------
-  // MimoCode (same schema as OpenCode)
-  // -----------------------------------------------------------------------
-  {
-    key: 'mimocode',
-    name: 'MimoCode',
-    label: 'mimocode',
-    color: '#f1fa8c',     // yellow
-    barChar: '░',
-    kind: 'sqlite',
-    envVar: 'MIMOCODE_HOME',
-    candidatePaths: () => [
-      env.MIMOCODE_HOME
-        ? join(env.MIMOCODE_HOME, 'mimocode.db')
-        : join(HOME, '.local', 'share', 'mimocode', 'mimocode.db'),
-    ],
-    count: countSqliteRows,
-    hasTokens: true,
-    description: '~/.local/share/mimocode/mimocode.db  (tokens + cost)',
-  },
-
-  // -----------------------------------------------------------------------
-  // GitHub Copilot CLI (presence only)
-  // -----------------------------------------------------------------------
-  {
-    key: 'copilot',
-    name: 'GitHub Copilot',
-    label: 'copilot',
-    color: '#3b82f6',     // deep blue
-    barChar: '·',
-    kind: 'jsonl-events',
-    envVar: 'COPILOT_HOME',
-    candidatePaths: () => {
-      const base = env.COPILOT_HOME || join(HOME, '.copilot');
-      return [
-        join(base, 'session-state'),
-        base,
-      ];
-    },
-    count: countJsonlRecursive,
-    hasTokens: false,
-    description: '~/.copilot/session-state/*/events.jsonl  (no token data)',
-  },
-
-  // -----------------------------------------------------------------------
   // Antigravity (VS Code variant) - mostly cache; no token data
   // -----------------------------------------------------------------------
   {

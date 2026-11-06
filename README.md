@@ -1,7 +1,7 @@
 # ai-usage-analyzer
 
 A local web dashboard for AI coding agent token consumption. Auto-detects
-**Claude Code**, **Codex**, **OpenCode**, **MimoCode**, **GitHub Copilot**,
+**Claude Code**, **Codex**, **OpenCode**,
 **Antigravity**, and **Gemini CLI** data directories.
 
 The default command starts a local server and opens the dashboard in your browser.
@@ -39,15 +39,13 @@ ai-usage-analyzer --json --quota    # include a live quota snapshot
 | Claude Code    | `~/.claude/projects`                | yes (estimated cost) |
 | Codex          | `~/.codex/sessions/` and `archived_sessions/` | yes (estimated cost) |
 | OpenCode       | `~/.local/share/opencode/opencode.db` | yes (+cost) |
-| MimoCode       | `~/.local/share/mimocode/mimocode.db` | yes (+cost) |
-| GitHub Copilot | `~/.copilot/session-state/`        | presence only |
 | Antigravity    | `~/Library/Application Support/Antigravity` | presence only |
 | Gemini CLI     | `~/.gemini/antigravity/conversations` | presence only |
 
 ## Path overrides
 
 Override any tool's base path with an env var (`CLAUDE_HOME`, `CODEX_HOME`,
-`OPENCODE_HOME`, `MIMOCODE_HOME`, `COPILOT_HOME`, `ANTIGRAVITY_HOME`,
+`OPENCODE_HOME`, `ANTIGRAVITY_HOME`,
 `GEMINI_HOME`), or pass all at once via JSON:
 
 ```bash
@@ -60,6 +58,12 @@ For tools that record token data, the analyzer shows input, output, cache
 read, cache write, and reasoning tokens. Cache hits are cheap; reasoning is
 the extended-thinking/chain-of-thought cost.
 
+Average daily tokens divides total tokens by calendar days, including days
+without usage. The dashboard uses the selected date range in your local time.
+All time uses the first through last recorded day. Terminal, Markdown, and JSON
+reports use the first through last recorded day in UTC; JSON exposes the value
+as `summary.avgDailyTokens`.
+
 ## Quotas
 
 Reports stay offline unless `--quota` is supplied. This requests Claude and Codex
@@ -71,8 +75,8 @@ change. Codex credentials may be refreshed and written back to `auth.json`.
 Claude and Codex costs use bundled API rates per model and are estimates,
 not subscription charges or invoices. `~` marks an estimate, `*` marks a
 partial total, and `n/a` means unavailable. Unknown models are listed rather
-than assigned a fallback price. OpenCode and MimoCode costs are read from
-their local databases. Pricing uses standard public API rates and the
+than assigned a fallback price. OpenCode costs are read from
+its local database. Pricing uses standard public API rates and the
 five-minute Claude cache-write rate; regional, batch, and other modifiers may
 differ. Rates are versioned with the app and can become outdated.
 

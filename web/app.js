@@ -1,4 +1,5 @@
 import { overall, perProject, perTool, perMonth, topSessions } from '/aggregate.js';
+import { dayNumber, periodBounds as boundsForPeriod, dateValue, parseDate, calendarDays } from '/dates.js';
 
 const $ = id => document.getElementById(id);
 const root = document.documentElement;
@@ -26,6 +27,9 @@ const brandIcons = new Set(['claude', 'codex', 'opencode']);
 const state = { data: null, page: 0, project: null, period: { key: 'all' }, tool: 'all', sort: 'tokens', allProjects: false, totalTarget: 0, previousTotal: 0, tapeKey: '', tapeFresh: false, tape: null };
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 let animation;
+let dateDraft;
+let calendarMonth;
+let pickingEnd = false;
 
 function readTheme() {
   try {
@@ -169,24 +173,73 @@ function dated(ts, formatter = dayDate) {
   return Number.isFinite(ts) && !Number.isNaN(new Date(ts).getTime()) ? formatter.format(ts) : 'Unknown date';
 }
 
-function dayNumber(ts) {
-  const date = new Date(ts);
-  return Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000);
-}
-
 function dayLabel(day, formatter = utcDayLong) {
   return formatter.format(day * 86400000);
 }
 
 function periodBounds() {
-  const { key, from, to } = state.period;
+  return boundsForPeriod(state.period);
+}
+
+function periodLabel(period) {
+  if (period.key !== 'custom') return periodLabels[period.key];
+  return period.from === period.to ? dayLabel(period.from, utcDayShort) : `${dayLabel(period.from)} to ${dayLabel(period.to)}`;
+}
+
+function renderDatePicker(focusDay) {
+  const bounds = boundsForPeriod(dateDraft);
+  const [from, to] = bounds || [];
+  const valid = !bounds || (from != null && to != null && from <= to);
+  const month = new Date(calendarMonth * 86400000);
   const today = dayNumber(Date.now());
-  if (key === 'all') return null;
-  if (key === 'custom') return [from, to];
-  if (key === 'today') return [today, today];
-  if (key === 'week') return [today - (new Date().getDay() + 6) % 7, today];
-  if (key === 'year') return [dayNumber(new Date(new Date().getFullYear(), 0, 1).getTime()), today];
-  return [today - Number(key) + 1, today];
+  $('calendar-month').textContent = new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(month);
+  for (const button of document.querySelectorAll('[data-period]')) button.setAttribute('aria-pressed', String(dateDraft.key === button.dataset.period));
+  const days = calendarDays(calendarMonth);
+  const tabDay = focusDay ?? (days.includes(from) ? from : days.includes(today) ? today : calendarMonth);
+  const container = clear('calendar-days');
+  for (const day of days) {
+    const date = new Date(day * 86400000);
+    const button = el('button', 'calendar-day', date.getUTCDate());
+    button.type = 'button';
+    button.dataset.day = day;
+    button.tabIndex = day === tabDay ? 0 : -1;
+    button.setAttribute('aria-label', dayLabel(day));
+    button.setAttribute('aria-pressed', String(valid && from != null && day >= from && day <= to));
+    if (day === today) button.setAttribute('aria-current', 'date');
+    button.classList.toggle('outside-month', date.getUTCMonth() !== month.getUTCMonth());
+    button.classList.toggle('range-start', day === from);
+    button.classList.toggle('range-end', day === to);
+    container.append(button);
+  }
+  $('date-from').value = dateValue(from);
+  $('date-to').value = dateValue(to);
+  $('date-from').max = dateValue(to);
+  $('date-to').min = dateValue(from);
+  $('apply-date').disabled = !valid;
+  $('date-help').textContent = from != null && to != null && from > to
+    ? 'End date must be on or after the start date.'
+    : pickingEnd ? 'Now select an end date.' : 'Select a start date, then an end date. Dates use your local time.';
+  $('date-preview').textContent = valid ? periodLabel(dateDraft) : 'Choose a complete date range';
+  if (focusDay != null) container.querySelector(`[data-day="${focusDay}"]`)?.focus();
+}
+
+function openDatePicker() {
+  dateDraft = { ...state.period };
+  const day = periodBounds()?.[0] ?? dayNumber(Date.now());
+  const month = new Date(day * 86400000);
+  month.setUTCDate(1);
+  calendarMonth = month.getTime() / 86400000;
+  pickingEnd = false;
+  renderDatePicker();
+  $('date-dialog').showModal();
+  $('date-filter').setAttribute('aria-expanded', 'true');
+}
+
+function moveCalendarMonth(step) {
+  const date = new Date(calendarMonth * 86400000);
+  date.setUTCMonth(date.getUTCMonth() + step);
+  calendarMonth = date.getTime() / 86400000;
+  renderDatePicker();
 }
 
 function periodRecords() {
@@ -272,7 +325,11 @@ function insightText(totals) {
 }
 
 function renderSummary(records) {
-  const totals = overall(records);
+  const times = records.filter(validTs).map(record => record.ts);
+  const range = times.reduce((result, ts) => [Math.min(result[0], ts), Math.max(result[1], ts)], [Infinity, -Infinity]);
+  const bounds = periodBounds();
+  const dayCount = bounds ? bounds[1] - bounds[0] + 1 : times.length ? dayNumber(range[1]) - dayNumber(range[0]) + 1 : 0;
+  const totals = overall(records, dayCount);
   state.previousTotal = state.totalTarget;
   state.totalTarget = totals.tokensTotal;
   setTotal(totals.tokensTotal);
@@ -281,13 +338,12 @@ function renderSummary(records) {
   $('session-count').textContent = number.format(totals.n);
   $('project-count').textContent = number.format(new Set(records.map(record => record.project)).size);
   $('average').textContent = totals.n ? compact.format(totals.avg) : 'None';
+  $('daily-average').textContent = compact.format(totals.avgDailyTokens);
   $('cost').textContent = costLabel(totals);
   $('cost-detail').textContent = costDescription(totals.costStatus);
   const days = dailyTotals(records);
   const busiest = [...days].reduce((best, entry) => !best || entry[1] > best[1] ? entry : best, null);
   $('busiest-day').textContent = busiest ? `${dayLabel(busiest[0], utcDayShort)} · ${compact.format(busiest[1])}` : 'None';
-  const times = records.filter(validTs).map(record => record.ts);
-  const range = times.reduce((result, ts) => [Math.min(result[0], ts), Math.max(result[1], ts)], [Infinity, -Infinity]);
   $('range-label').textContent = times.length ? `${dated(range[0])} to ${dated(range[1])}` : '';
   renderComposition(totals);
 }
@@ -803,11 +859,7 @@ function buildToolFilter() {
 }
 
 function renderFilters(records) {
-  for (const button of document.querySelectorAll('[data-period]')) {
-    const key = button.dataset.period;
-    button.setAttribute('aria-pressed', String(state.period.key === key));
-    if (key === 'custom') button.hidden = state.period.key !== 'custom';
-  }
+  $('date-filter-label').textContent = periodLabel(state.period);
   for (const button of $('tool-filter').children) button.setAttribute('aria-pressed', String(button.dataset.tool === state.tool));
   $('scope').textContent = `${number.format(records.length)} ${records.length === 1 ? 'session' : 'sessions'} in view`;
 }
@@ -901,12 +953,67 @@ document.querySelector('.skip-link').addEventListener('click', event => {
 });
 for (const button of document.querySelectorAll('[data-period]')) {
   button.addEventListener('click', () => {
-    if (button.dataset.period === 'custom') return;
-    state.period = { key: button.dataset.period };
-    state.page = 0;
-    render();
+    const key = button.dataset.period;
+    const [from, to] = boundsForPeriod(dateDraft) || [dayNumber(Date.now()), dayNumber(Date.now())];
+    dateDraft = key === 'custom' ? { key, from, to } : { key };
+    pickingEnd = false;
+    if (key !== 'all') {
+      const month = new Date(boundsForPeriod(dateDraft)[0] * 86400000);
+      month.setUTCDate(1);
+      calendarMonth = month.getTime() / 86400000;
+    }
+    renderDatePicker();
   });
 }
+$('date-filter').addEventListener('click', openDatePicker);
+for (const id of ['close-date', 'cancel-date']) $(id).addEventListener('click', () => $('date-dialog').close());
+$('date-dialog').addEventListener('close', () => $('date-filter').setAttribute('aria-expanded', 'false'));
+$('date-dialog').addEventListener('click', event => {
+  if (event.target !== event.currentTarget) return;
+  const rect = event.currentTarget.getBoundingClientRect();
+  if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) event.currentTarget.close();
+});
+$('calendar-previous').addEventListener('click', () => moveCalendarMonth(-1));
+$('calendar-next').addEventListener('click', () => moveCalendarMonth(1));
+$('calendar-days').addEventListener('click', event => {
+  const button = event.target.closest('[data-day]');
+  if (!button) return;
+  const day = Number(button.dataset.day);
+  dateDraft = pickingEnd
+    ? { key: 'custom', from: Math.min(dateDraft.from, day), to: Math.max(dateDraft.from, day) }
+    : { key: 'custom', from: day, to: null };
+  pickingEnd = !pickingEnd;
+  renderDatePicker(day);
+});
+$('calendar-days').addEventListener('keydown', event => {
+  const button = event.target.closest('[data-day]');
+  const step = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[event.key];
+  if (!button || step == null) return;
+  event.preventDefault();
+  const day = Number(button.dataset.day) + step;
+  const month = new Date(day * 86400000);
+  month.setUTCDate(1);
+  calendarMonth = month.getTime() / 86400000;
+  renderDatePicker(day);
+});
+for (const id of ['date-from', 'date-to']) $(id).addEventListener('change', () => {
+  dateDraft = { key: 'custom', from: parseDate($('date-from').value), to: parseDate($('date-to').value) };
+  pickingEnd = false;
+  const day = dateDraft[id === 'date-from' ? 'from' : 'to'];
+  if (day != null) {
+    const month = new Date(day * 86400000);
+    month.setUTCDate(1);
+    calendarMonth = month.getTime() / 86400000;
+  }
+  renderDatePicker();
+});
+$('apply-date').addEventListener('click', () => {
+  if ($('apply-date').disabled) return;
+  state.period = { ...dateDraft };
+  state.page = 0;
+  render();
+  $('date-dialog').close();
+});
 $('tool-filter').addEventListener('click', event => {
   const button = event.target.closest('button');
   if (!button) return;

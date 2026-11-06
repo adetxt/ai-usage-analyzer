@@ -132,6 +132,7 @@ export function renderMarkdown({
     out.push(`**Range**: ${dateRange[0] ?? "—"} → ${dateRange[1] ?? "—"}  `);
     out.push(`**Sessions**: ${fmtInt(records.length)}  `);
     out.push(`**Total tokens**: ${fmtCompact(tot.tokensTotal)}  `);
+    out.push(`**Average daily tokens**: ${fmtCompact(tot.avgDailyTokens)}  `);
     out.push(`**Cost**: ${fmtCost(tot.cost, tot.costStatus)}  `);
     if (tot.unknownModels.length) out.push(`**Unpriced models**: ${tot.unknownModels.map(mdEscape).join(", ")}  `);
   } else {

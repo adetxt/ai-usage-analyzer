@@ -42,15 +42,11 @@
 
     <div id="dashboard" hidden>
       <div id="filters" class="filters">
-        <div class="filter-group" role="group" aria-label="Period">
-          <button type="button" data-period="today" aria-pressed="false">Today</button>
-          <button type="button" data-period="week" aria-pressed="false">This week</button>
-          <button type="button" data-period="30" aria-pressed="false">30 days</button>
-          <button type="button" data-period="90" aria-pressed="false">90 days</button>
-          <button type="button" data-period="year" aria-pressed="false">This year</button>
-          <button type="button" data-period="all" aria-pressed="true">All time</button>
-          <button type="button" data-period="custom" aria-pressed="false" hidden>Custom range</button>
-        </div>
+        <button id="date-filter" class="button quiet date-trigger" type="button" aria-haspopup="dialog" aria-controls="date-dialog" aria-expanded="false">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4.5" width="14" height="12" rx="1"/><path d="M6.5 3v3M13.5 3v3M3 8.5h14"/></svg>
+          <span id="date-filter-label">All time</span>
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m6 8 4 4 4-4"/></svg>
+        </button>
         <div id="tool-filter" class="filter-group tool-filter" role="group" aria-label="Tool"></div>
         <p id="scope" class="scope"></p>
       </div>
@@ -67,6 +63,7 @@
             <div><dt>Sessions</dt><dd id="session-count"></dd></div>
             <div><dt>Projects</dt><dd id="project-count"></dd></div>
             <div><dt>Average session</dt><dd id="average"></dd></div>
+            <div title="Total tokens divided by calendar days in the selected range, including days without usage. All time uses the first through last recorded day."><dt>Average daily tokens</dt><dd id="daily-average"></dd></div>
             <div><dt>Busiest day</dt><dd id="busiest-day"></dd></div>
             <div class="slip-cost"><dt>API cost</dt><dd id="cost"></dd><p id="cost-detail"></p></div>
           </dl>
@@ -182,6 +179,43 @@
     <p>Local usage records. Costs are API-rate estimates, not subscription charges.</p>
     <p id="updated"></p>
   </footer>
+
+  <dialog id="date-dialog" class="date-dialog" aria-labelledby="date-title" aria-describedby="date-help">
+    <div class="date-heading">
+      <h2 id="date-title">Date range</h2>
+      <button id="close-date" class="button quiet" type="button" aria-label="Close date picker">Close</button>
+    </div>
+    <div class="date-body">
+      <div class="date-presets" role="group" aria-label="Date presets">
+        <button type="button" data-period="today" aria-pressed="false">Today</button>
+        <button type="button" data-period="week" aria-pressed="false">This week</button>
+        <button type="button" data-period="30" aria-pressed="false">Last 30 days</button>
+        <button type="button" data-period="90" aria-pressed="false">Last 90 days</button>
+        <button type="button" data-period="year" aria-pressed="false">This year</button>
+        <button type="button" data-period="all" aria-pressed="true">All time</button>
+        <button type="button" data-period="custom" aria-pressed="false">Custom range</button>
+      </div>
+      <div class="date-calendar">
+        <div class="calendar-heading">
+          <button id="calendar-previous" class="button quiet" type="button" aria-label="Previous month">‹</button>
+          <h3 id="calendar-month" aria-live="polite"></h3>
+          <button id="calendar-next" class="button quiet" type="button" aria-label="Next month">›</button>
+        </div>
+        <div class="calendar-weekdays" aria-hidden="true"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div>
+        <div id="calendar-days" class="calendar-days" role="group" aria-labelledby="calendar-month"></div>
+        <p id="date-help" class="date-help" aria-live="polite">Select a start date, then an end date.</p>
+        <div class="date-fields">
+          <label>Start date<input id="date-from" type="date" required></label>
+          <label>End date<input id="date-to" type="date" required></label>
+        </div>
+      </div>
+    </div>
+    <div class="date-footer">
+      <p id="date-preview" aria-live="polite"></p>
+      <button id="cancel-date" class="button quiet" type="button">Cancel</button>
+      <button id="apply-date" class="button solid" type="button">Apply</button>
+    </div>
+  </dialog>
 
   <dialog id="session-dialog" class="drawer" aria-labelledby="session-title">
     <div class="drawer-body">

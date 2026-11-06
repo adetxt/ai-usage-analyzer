@@ -128,8 +128,23 @@ export function perToolPerMonth(records) {
   return out.sort((a, b) => b.tokensTotal - a.tokensTotal);
 }
 
-export function overall(records) {
-  return summarize(records);
+export function overall(records, dayCount) {
+  const totals = summarize(records);
+  if (dayCount === undefined) {
+    let first = Infinity;
+    let last = -Infinity;
+    for (const record of records) {
+      if (!Number.isFinite(record.ts) || !Number.isFinite(new Date(record.ts).getTime())) continue;
+      const day = Math.floor(record.ts / 86400000);
+      first = Math.min(first, day);
+      last = Math.max(last, day);
+    }
+    dayCount = last - first + 1;
+  }
+  return {
+    ...totals,
+    avgDailyTokens: Number.isFinite(dayCount) && dayCount > 0 ? totals.tokensTotal / dayCount : 0,
+  };
 }
 
 export function topSessions(records, n = 5) {

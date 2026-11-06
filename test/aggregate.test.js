@@ -12,13 +12,13 @@ import {
   overall, perTool, perProject, perMonth, perWeek, perToolPerMonth, tokenBreakdown,
 } from '../src/aggregate.js';
 
-test('detectAll returns the seven expected tool keys', () => {
+test('detectAll returns the five expected tool keys', () => {
   const dets = detectAll();
   const keys = dets.map(d => d.key);
-  for (const k of ['claude', 'codex', 'opencode', 'mimocode', 'copilot', 'antigravity', 'gemini']) {
+  for (const k of ['claude', 'codex', 'opencode', 'antigravity', 'gemini']) {
     assert.ok(keys.includes(k), `missing detector for ${k}`);
   }
-  assert.equal(dets.length, 7);
+  assert.equal(dets.length, 5);
 });
 
 test('every detection has the required fields', () => {
@@ -54,7 +54,7 @@ test('aggregate functions return sane shapes on empty input', () => {
   assert.deepEqual(overall([]), {
     n: 0, tokensTotal: 0, tokensInput: 0, tokensOutput: 0,
     tokensCacheRead: 0, tokensCacheWrite: 0, tokensReasoning: 0,
-    cost: 0, costStatus: 'unavailable', unknownModels: [], avg: 0,
+    cost: 0, costStatus: 'unavailable', unknownModels: [], avg: 0, avgDailyTokens: 0,
   });
 });
 
@@ -70,6 +70,25 @@ test('overall sums fields correctly', () => {
   assert.equal(t.tokensTotal, 547);
   assert.equal(t.cost, 0.03);
   assert.equal(t.avg, 273.5);
+});
+
+test('daily average includes idle calendar days and both endpoints in UTC', () => {
+  const records = [
+    { ts: Date.parse('2026-01-03T00:01:00Z'), tokensTotal: 200 },
+    { ts: Date.parse('2026-01-01T23:59:00Z'), tokensTotal: 100 },
+  ];
+  assert.equal(overall(records).avgDailyTokens, 100);
+  assert.equal(overall(records).avg, 150);
+  assert.equal(overall(records, 30).avgDailyTokens, 10);
+});
+
+test('daily average handles same-day sessions, leap days, empty and undated records', () => {
+  const record = (date, tokensTotal) => ({ ts: Date.parse(date), tokensTotal });
+  assert.equal(overall([record('2026-01-01T00:01:00Z', 100), record('2026-01-01T23:59:00Z', 200)]).avgDailyTokens, 300);
+  assert.equal(overall([record('2024-02-28', 100), record('2024-03-01', 200)]).avgDailyTokens, 100);
+  assert.equal(overall([]).avgDailyTokens, 0);
+  assert.equal(overall([], 30).avgDailyTokens, 0);
+  assert.equal(overall([{ tokensTotal: 100 }, { ts: NaN, tokensTotal: 200 }]).avgDailyTokens, 0);
 });
 
 test('perTool groups by tool key', () => {
