@@ -15,12 +15,6 @@ const DETECTIONS_FULL = [
   { key: 'opencode', name: 'OpenCode', kind: 'sqlite', status: 'present',
     path: '/home/u/.local/share/opencode/opencode.db', count: 328, hasTokens: true,
     description: '~/.local/share/opencode/opencode.db  (tokens + cost)' },
-  { key: 'mimocode', name: 'MimoCode', kind: 'sqlite', status: 'present',
-    path: '/home/u/.local/share/mimocode/mimocode.db', count: 0, hasTokens: true,
-    description: '~/.local/share/mimocode/mimocode.db  (tokens + cost)' },
-  { key: 'copilot', name: 'GitHub Copilot', kind: 'jsonl-events', status: 'present',
-    path: '/home/u/.copilot/session-state', count: 1, hasTokens: false,
-    description: '~/.copilot/session-state/*/events.jsonl  (no token data)' },
   { key: 'antigravity', name: 'Antigravity', kind: 'dir', status: 'present',
     path: '/home/u/Library/Application Support/Antigravity', count: 17, hasTokens: false,
     description: '~/Library/Application Support/Antigravity  (no token data)' },
@@ -56,7 +50,7 @@ test('markdown: starts with H1 title', () => {
     `expected to start with H1, got: ${md.slice(0, 50)}`);
 });
 
-test('markdown: contains all 7 tools in the Detected table', () => {
+test('markdown: contains all 5 tools in the Detected table', () => {
   const md = renderMarkdown({ records: RECORDS, detections: DETECTIONS_FULL });
   for (const d of DETECTIONS_FULL) {
     assert.ok(md.includes(d.name), `missing tool: ${d.name}`);
@@ -75,6 +69,15 @@ test('markdown: includes per-project table with code-fenced paths', () => {
   assert.ok(md.includes('## Per Project'));
   assert.ok(md.includes('`/home/u/dev/after-last-night`'),
     'expected backtick-quoted path');
+});
+
+test('markdown: shows average daily tokens across the inclusive recorded range', () => {
+  const records = [
+    { ...RECORDS[0], ts: Date.parse('2026-01-01'), tokensTotal: 100 },
+    { ...RECORDS[0], ts: Date.parse('2026-01-03'), tokensTotal: 200 },
+  ];
+  const md = renderMarkdown({ records, detections: DETECTIONS_FULL });
+  assert.ok(md.includes('**Average daily tokens**: 100'));
 });
 
 test('markdown: per-project path is unchanged when no HOME is set', () => {
@@ -150,13 +153,13 @@ test('markdown: handles empty records (only detection panel)', () => {
 });
 
 test('markdown: surfaces errors in Errors section', () => {
-  const errors = ['MimoCode: session table has no token columns',
+  const errors = ['OpenCode: session table has no token columns',
                   'Something else broke'];
   const md = renderMarkdown({
     records: RECORDS, detections: DETECTIONS_FULL, errors,
   });
   assert.ok(md.includes('### Errors'));
-  assert.ok(md.includes('MimoCode'));
+  assert.ok(md.includes('OpenCode: session table has no token columns'));
   assert.ok(md.includes('Something else broke'));
 });
 

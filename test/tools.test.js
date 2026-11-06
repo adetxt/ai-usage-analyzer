@@ -8,14 +8,14 @@ import {
   TOOLS, TOOL_ORDER, getTool, getToolColor, getToolBarChar, getToolLabel,
 } from '../src/tools.js';
 
-test('TOOLS has exactly the 7 expected tool keys', () => {
-  const expectedKeys = ['claude', 'codex', 'opencode', 'mimocode',
-                        'copilot', 'antigravity', 'gemini'];
+test('TOOLS has exactly the 5 expected tool keys', () => {
+  const expectedKeys = ['claude', 'codex', 'opencode',
+                        'antigravity', 'gemini'];
   const actualKeys = TOOLS.map(t => t.key);
   for (const k of expectedKeys) {
     assert.ok(actualKeys.includes(k), `missing tool: ${k}`);
   }
-  assert.equal(TOOLS.length, 7, `expected 7 tools, got ${TOOLS.length}`);
+  assert.equal(TOOLS.length, 5, `expected 5 tools, got ${TOOLS.length}`);
 });
 
 test('TOOL_ORDER matches the order of TOOLS', () => {
@@ -51,8 +51,6 @@ test('getToolColor returns the configured hex for each known tool', () => {
     claude:      '#ff9e64',  // orange
     codex:       '#87ceeb',  // sky blue
     opencode:    '#f8f8f2',  // white
-    mimocode:    '#f1fa8c',  // yellow
-    copilot:     '#3b82f6',  // deep blue
     antigravity: '#ff5555',  // red
     gemini:      '#14b8a6',  // teal
   };
@@ -66,7 +64,6 @@ test('getToolBarChar returns the configured char for each known tool', () => {
     claude:   '█',
     codex:    '▓',
     opencode: '▒',
-    mimocode: '░',
   };
   for (const [key, ch] of Object.entries(expected)) {
     assert.equal(getToolBarChar(key), ch,

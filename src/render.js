@@ -353,6 +353,7 @@ export function renderOverview(records, detections) {
 
   const body =
     pt.toString() +
+    "\n\n" + `Average daily tokens: ${fmtCompact(t.avgDailyTokens)}` +
     "\n\n" +
     chalk.bold.underline("Token Breakdown") +
     "\n" +
@@ -907,9 +908,9 @@ export function renderNotes(detections, errors) {
   lines.push("");
   lines.push(chalk.bold.underline("Env overrides"));
   lines.push(
-    "  $CLAUDE_HOME    $CODEX_HOME    $OPENCODE_HOME    $MIMOCODE_HOME",
+    "  $CLAUDE_HOME    $CODEX_HOME    $OPENCODE_HOME",
   );
-  lines.push("  $COPILOT_HOME   $ANTIGRAVITY_HOME    $GEMINI_HOME");
+  lines.push("  $ANTIGRAVITY_HOME    $GEMINI_HOME");
   lines.push(
     "  $AI_USAGE_PATHS_JSON = " + chalk.italic('\'{"codex":"/custom/path"}\''),
   );

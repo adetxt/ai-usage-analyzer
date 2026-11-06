@@ -2,7 +2,6 @@
 //
 // Unified record shape:
 //   {
-//     tool:        'opencode' | 'codex' | 'mimocode' | string,
 //     sessionId:   string,
 //     project:     string,          // working directory or '(unknown)'
 //     title:       string,
@@ -83,7 +82,6 @@ function compactHome(p) {
 }
 
 // ---------------------------------------------------------------------------
-// SQLite loader (OpenCode + MimoCode share schema)
 // ---------------------------------------------------------------------------
 
 function loadOpencodeStyleSqlite(dbPath, toolKey) {
@@ -94,7 +92,6 @@ function loadOpencodeStyleSqlite(dbPath, toolKey) {
     return { records: [], error: `cannot open ${dbPath}: ${e.message}` };
   }
 
-  // Introspect session table for token columns (MimoCode schema is a subset)
   const cols = db.prepare(`PRAGMA table_info(session)`).all();
   const colSet = new Set(cols.map((c) => c.name));
   const hasTokens =
@@ -464,7 +461,7 @@ export async function loadAll(detections) {
   const tasks = detections
     .filter((d) => d.status === "present")
     .map((d) => {
-      if (d.key === "opencode" || d.key === "mimocode") {
+      if (d.key === "opencode") {
         return Promise.resolve({
           d,
           r: loadOpencodeStyleSqlite(d.path, d.key),

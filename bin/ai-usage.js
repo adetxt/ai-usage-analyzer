@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 // AI Usage Analyzer - TUI for local AI coding agent token consumption
-// Auto-detects: Claude Code, Codex, OpenCode, MimoCode, Copilot, Antigravity, Gemini
 
 import { overall } from "../src/aggregate.js";
 import { detectAll } from "../src/detectors.js";
@@ -66,16 +65,14 @@ Examples:
   ai-usage --static --top 20     # show top 20 sessions
 
 Environment overrides (per-tool data path):
-  CLAUDE_HOME, CODEX_HOME, OPENCODE_HOME, MIMOCODE_HOME,
-  COPILOT_HOME, ANTIGRAVITY_HOME, GEMINI_HOME,
+  CLAUDE_HOME, CODEX_HOME, OPENCODE_HOME,
+  ANTIGRAVITY_HOME, GEMINI_HOME,
   AI_USAGE_PATHS_JSON='{"codex":"/custom/path",...}'
 
 Supported tools:
   • Claude Code    — ~/.claude/projects  (tokens from per-message usage)
   • Codex          — ~/.codex/sessions      (tokens from token_count events)
   • OpenCode       — ~/.local/share/opencode/opencode.db  (tokens + cost)
-  • MimoCode       — ~/.local/share/mimocode/mimocode.db  (tokens + cost)
-  • GitHub Copilot — ~/.copilot/session-state  (presence only)
   • Antigravity    — ~/Library/Application Support/Antigravity  (presence only)
   • Gemini CLI     — ~/.gemini/antigravity/conversations  (presence only)
 `);

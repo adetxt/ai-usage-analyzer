@@ -107,6 +107,51 @@ h3 { font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
 .tool-filter button { display: inline-flex; align-items: center; gap: 8px; }
 .scope { margin-left: auto; color: var(--ink-2); font-weight: 600; }
 
+.date-trigger { justify-content: space-between; max-width: 100%; text-align: left; }
+.date-trigger svg { flex: none; }
+.date-trigger[aria-expanded='true'] { background: var(--paper-2); }
+.date-dialog { width: min(660px, calc(100% - 24px)); max-width: none; max-height: calc(100dvh - 24px); margin: auto; padding: 0; border: 1.5px solid var(--ink); border-radius: 3px; background: var(--raised); color: var(--ink); overflow-y: auto; }
+.date-dialog::backdrop { background: var(--scrim); }
+.date-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px; border-bottom: 1px solid var(--rule); }
+.date-heading h2 { font-size: 22px; }
+.date-body { display: grid; }
+.date-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 12px; border-bottom: 1px solid var(--rule); }
+.date-presets button { min-height: 44px; padding: 6px 8px; border: 0; border-radius: 3px; background: transparent; font-size: 13px; font-weight: 600; }
+.date-presets button:hover { background: var(--paper-2); }
+.date-presets button[aria-pressed='true'] { background: var(--ink); color: var(--paper); font-weight: 800; }
+.date-calendar { min-width: 0; padding: 12px; }
+.calendar-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.calendar-heading .button { width: 44px; padding: 0; border-color: transparent; font-size: 26px; }
+.calendar-heading h3 { font-size: 17px; }
+.calendar-weekdays, .calendar-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); text-align: center; }
+.calendar-weekdays { margin-bottom: 6px; color: var(--ink-2); font-size: 12px; font-weight: 600; }
+.calendar-day { min-height: 44px; padding: 0; border: 1px solid transparent; background: transparent; font-weight: 600; font-variant-numeric: tabular-nums; }
+.calendar-day.outside-month { color: var(--ink-2); font-weight: 400; }
+.calendar-day[aria-current='date'] { text-decoration: underline; text-underline-offset: 5px; }
+.calendar-day[aria-pressed='true'] { background: var(--paper-2); }
+.calendar-day.range-start, .calendar-day.range-end { background: var(--accent-ink); color: var(--paper); font-weight: 800; }
+.calendar-day.range-start { border-radius: 3px 0 0 3px; }
+.calendar-day.range-end { border-radius: 0 3px 3px 0; }
+.calendar-day:hover { border-color: var(--ink); }
+.calendar-day:focus-visible { position: relative; z-index: 1; outline-offset: -3px; }
+.date-help { min-height: 38px; margin-top: 12px; color: var(--ink-2); font-size: 12px; }
+.date-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.date-fields label { display: grid; gap: 4px; color: var(--ink-2); font-size: 12px; font-weight: 700; }
+.date-fields input { width: 100%; min-width: 0; min-height: 44px; padding: 6px; border: 1px solid var(--ink); border-radius: 3px; background: var(--paper); color: var(--ink); font-size: 13px; }
+.date-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; padding: 16px; border-top: 1px solid var(--rule); }
+.date-footer p { flex-basis: 100%; margin-right: auto; color: var(--ink-2); font-size: 13px; font-weight: 600; }
+@media (max-width: 359px) {
+  .date-dialog { width: calc(100% - 4px); }
+  .date-calendar { padding-inline: 2px; }
+}
+@media (min-width: 620px) {
+  .date-body { grid-template-columns: 170px minmax(0, 1fr); }
+  .date-presets { grid-template-columns: 1fr; align-content: start; border-bottom: 0; border-right: 1px solid var(--rule); }
+  .date-presets button { padding-inline: 12px; text-align: left; font-size: 14px; }
+  .date-calendar { padding: 20px; }
+  .date-footer p { flex: 1; }
+}
+
 .ic { display: inline-block; flex: none; width: 18px; height: 18px; background: currentColor; -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
 .ic-claude { --icon: url('/icons/claude.svg'); }
 .ic-codex { --icon: url('/icons/openai.svg'); }
@@ -176,7 +221,7 @@ h3 { font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
 .tape { position: relative; }
 .tape-plot { position: relative; display: flex; align-items: flex-end; gap: 1px; height: clamp(150px, 22vw, 240px); border-bottom: 2px solid var(--ink); cursor: crosshair; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
 .tape-plot:focus-visible { outline-offset: 8px; }
-.tick { flex: 1 1 0; min-width: 1px; height: var(--h); background: var(--ink); transform-origin: bottom; }
+.tick { flex: 1 1 0; min-width: 0; height: var(--h); background: var(--ink); transform-origin: bottom; }
 .tick.zero { height: 2px; background: var(--ink-3); }
 .tick.peak { background: var(--accent); }
 .veil { position: absolute; top: 0; bottom: 0; background: var(--veil); pointer-events: none; }
